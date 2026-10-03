@@ -39,7 +39,9 @@ export type Risk = {
   version: string; computed_at: string;
 };
 
-export type StepId = "deplane" | "walk" | "queue" | "gate";
+export type Booking = "single_ticket" | "separate_tickets";
+/** Known step ids; the API may add more, and any id renders. */
+export type StepId = "deplane" | "walk" | "queue" | "gate" | "recheck" | (string & {});
 
 export type ConnectionView = {
   itinerary_id: string; connection_id: string; airport: string;
@@ -49,6 +51,7 @@ export type ConnectionView = {
   steps: { id: StepId; label: string; minutes: number }[];
   assistance: { type: string } | null;
   degraded: boolean;
+  booking?: Booking;
 };
 
 export type FeedItem = { id: string; template: string; title: string; body: string; level: string | null; created_at: string };
@@ -89,7 +92,7 @@ export type Departure = {
 };
 export type DepartureList = { flights: Departure[]; truncated: boolean; window_hours: number };
 export type DeviceLink = { code: string; expires_in: number };
-export type ItineraryBody = { inbound: FlightInput; outbound: FlightInput; seat?: string; assistance?: AssistanceType };
+export type ItineraryBody = { inbound: FlightInput; outbound: FlightInput; seat?: string; assistance?: AssistanceType; booking?: Booking };
 
 export type RequestTicket = { id: string; status: string };
 export type MyRequest = { id: string; type: string; status: string; opened_at: string; closed_at: string | null };
@@ -124,7 +127,7 @@ export type OpsBoard = {
   actions: OpsAction[];
 };
 
-export type CrewItem = { rank: number; seat: string | null; onward: string; onward_dest: string; buffer_min: number; level: string; assistance: string | null };
+export type CrewItem = { rank: number; seat: string | null; onward: string; onward_dest: string; buffer_min: number; level: string; assistance: string | null; booking?: Booking };
 export type CrewFlight = { flight: Flight; items: CrewItem[] };
 export type GroundJob = { id: string; kind: string; seat: string | null; from_gate: string | null; to_gate: string | null; inbound: string; outbound: string; buffer_min: number; priority: number; status: "open" | "done"; created_at: string };
 export type AuthorityRequest = { id: string; name: string | null; inbound: string; outbound: string; airport: string; deadline: string | null; level: string; created_at: string };
@@ -145,6 +148,35 @@ export type DeadEvent = { id: string; topic: string; error: string; payload: unk
 export type Dlq = { events: DeadEvent[]; queues: { name: string; messages: number }[] };
 export type DlqReplayBody = { kind: "event"; id: string } | { kind: "queue"; name: string };
 export type AuditEntry = { at: string; actor: string; role: string; action: string; object: string };
+
+export type DemoState = {
+  connection_id: string; inbound: Flight; outbound: Flight; passengers: number;
+  risk: { level: string; buffer_min: number; left_min: number; needed_min: number; source: "model" | "rules"; confidence: number } | null;
+};
+export type DemoPassenger = {
+  seat: string;
+  booking: Booking;
+  assistance: string | null;
+  level: RiskLevel | null;
+  buffer_min: number;
+  why: string[];
+  message: { title: string; body: string; template: string; at: string } | null;
+  earlier_messages: { title: string; at: string }[];
+  staff: { audience: "crew" | "ground" | "authority"; text: string; state: "sent" | "waiting" | "dismissed"; note: string; decision_id: string | null; confidence: number }[];
+};
+export type DemoBoard = {
+  story: string[];
+  connection?: { inbound: Flight; outbound: Flight; left_min: number; needed_min: number; buffer_min: number; level: string | null; source: "model" | "rules" | null };
+  ops: { decision_id: string; title: string; detail: string; status: "pending" | "approved" | "dismissed" | "executed"; gate: string; confidence: number; decided_by: string | null } | null;
+  passengers: DemoPassenger[];
+};
+export type TraceStage = "event" | "buffer" | "risk" | "ops" | "passenger" | "decision" | "publish" | "deliver";
+export type TraceEntry = {
+  id: string; at: string; event_id: string | null;
+  stage: TraceStage;
+  title: string;
+  detail: Record<string, unknown>;
+};
 
 /* ───────────── Fetch core ───────────── */
 
@@ -257,11 +289,19 @@ export const api = {
   dlq: () => get<Dlq>("/admin/dlq"),
   replayDlq: (body: DlqReplayBody) => post<{ replayed: number }>("/admin/dlq/replay", body),
   audit: (limit = 100) => get<AuditEntry[]>(`/admin/audit?limit=${limit}`),
+
+  // Demo and trace
+  demo: () => get<{ demo: DemoState | null }>("/admin/demo"),
+  demoRun: () => post<{ demo: DemoState }>("/admin/demo/run"),
+  demoReset: () => post<{ erased: number }>("/admin/demo/reset"),
+  demoBoard: () => get<DemoBoard>("/admin/demo/board"),
+  trace: (limit = 300) => get<TraceEntry[]>(`/admin/trace?limit=${limit}`),
 };
 
 export const streams = {
   me: "/me/stream",
   staff: (audience: Audience) => `/staff/stream?audience=${audience}`,
+  trace: "/admin/trace/stream",
 };
 
 /* ───────────── Hooks ───────────── */

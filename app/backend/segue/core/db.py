@@ -104,6 +104,9 @@ class Itinerary(Base):
     principal_id: Mapped[str] = mapped_column(ForeignKey("data_principal.id", ondelete="CASCADE"), index=True)
     connection_id: Mapped[str] = mapped_column(ForeignKey("connection.id"), index=True)
     seat: Mapped[str | None] = mapped_column(String(6), nullable=True)
+    # single_ticket: both flights on one booking, the airline protects the connection.
+    # separate_tickets: the passenger booked them apart (self-transfer): bags are re-checked, no rebooking is owed.
+    booking: Mapped[str] = mapped_column(String(20), default="single_ticket", server_default="single_ticket")
     created_at: Mapped[datetime] = mapped_column(TS, default=now)
     expires_at: Mapped[datetime | None] = mapped_column(TS, nullable=True)
 

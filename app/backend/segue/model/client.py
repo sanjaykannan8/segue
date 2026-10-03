@@ -44,14 +44,21 @@ RISK = Score(
     ],
 )
 
+# booking is "single_ticket" (both flights on one booking: the airline protects the connection, bags are
+# checked through, rebooking is owed) or "separate_tickets" (self-transfer: the passenger collects and
+# re-checks the bag, and the airline owes neither a hold nor a rebooking).
 OPS = Choice(
-    instructions={"question": "What should the airline ops controller do about this connection?", "how": "Use risk_level first, then how many passengers are on the connection."},
+    instructions={
+        "question": "What should the airline ops controller do about this connection?",
+        "how": "Use risk_level first. Only protected_passengers (single ticket) count toward a hold or a rebooking. self_transfer_passengers booked separately: the airline owes them neither.",
+    },
     criteria={
         "none": {"when": "risk_level is safe"},
         "monitor": {"when": "risk_level is tight"},
-        "hold_flight": {"when": "risk_level is at_risk and passengers_on_connection is 5 or more: a short hold saves many people"},
-        "escort": {"when": "risk_level is at_risk and passengers_on_connection is under 5: ground help is enough"},
-        "rebook": {"when": "risk_level is lost"},
+        "hold_flight": {"when": "risk_level is at_risk and protected_passengers is 5 or more: a short hold saves many people"},
+        "escort": {"when": "risk_level is at_risk and protected_passengers is between 1 and 4: ground help is enough"},
+        "rebook": {"when": "risk_level is lost and protected_passengers is 1 or more"},
+        "notify_only": {"when": "risk_level is at_risk or lost and protected_passengers is 0: everyone is on separate tickets, so warn them early but take no airline action"},
     },
 )
 
@@ -67,25 +74,27 @@ PASSENGER = {
             "step_free_route": {"when": "declared_assistance is step_free_route"},
         },
     ),
-    "crew_priority_deplane": Noul(instructions={"question": "Should the cabin crew call this passenger off the aircraft first?", "yes_when": "risk_level is tight or at_risk", "no_when": "risk_level is safe (not needed) or lost (it would not help)"}),
+    "crew_priority_deplane": Noul(instructions={"question": "Should the cabin crew call this passenger off the aircraft first?", "yes_when": "risk_level is tight or at_risk, for either booking type", "no_when": "risk_level is safe (not needed) or lost (it would not help)"}),
     "ground_dispatch": Choice(
         instructions="Which ground resource should be sent for this passenger?",
         criteria={
-            "none": {"when": "risk_level is safe or lost, or risk_level is tight with no declared assistance and no terminal change"},
-            "buggy": {"when": "declared_assistance is wheelchair or buggy, or risk_level is at_risk within one terminal"},
-            "bus": {"when": "terminal_change is true and risk_level is tight or at_risk"},
-            "fast_track_escort": {"when": "risk_level is at_risk and the queue is the main delay"},
+            "none": {"when": "risk_level is safe or lost; or risk_level is tight with no declared assistance and no terminal change; or booking is separate_tickets with no declared assistance (the passenger must collect a bag and go landside, so an airside escort does not help)"},
+            "buggy": {"when": "declared_assistance is wheelchair or buggy; or booking is single_ticket and risk_level is at_risk within one terminal"},
+            "bus": {"when": "booking is single_ticket, terminal_change is true and risk_level is tight or at_risk"},
+            "fast_track_escort": {"when": "booking is single_ticket, risk_level is at_risk and the queue is the main delay"},
         },
     ),
-    "request_fast_track": Noul(instructions={"question": "Should a fast-track lane be requested from the airport for this passenger?", "yes_when": "risk_level is at_risk", "no_when": "risk_level is safe, tight or lost"}),
+    "request_fast_track": Noul(instructions={"question": "Should the airline request a fast-track lane from the airport for this passenger?", "yes_when": "booking is single_ticket and risk_level is at_risk", "no_when": "risk_level is safe, tight or lost; or booking is separate_tickets (the airline does not request it for a self-transfer)"}),
     "message_template": Choice(
         instructions="Which message should the passenger receive now?",
         criteria={
             "on_track": {"when": "risk_level is safe"},
-            "hurry": {"when": "risk_level is tight and no assistance is declared"},
-            "called_off_first": {"when": "risk_level is at_risk and no assistance is declared"},
+            "hurry": {"when": "booking is single_ticket, risk_level is tight and no assistance is declared"},
+            "called_off_first": {"when": "booking is single_ticket, risk_level is at_risk and no assistance is declared"},
             "assistance_coming": {"when": "an assistance need is declared and risk_level is tight or at_risk"},
-            "rebooked": {"when": "risk_level is lost"},
+            "rebooked": {"when": "booking is single_ticket and risk_level is lost: the airline arranges a new flight"},
+            "self_transfer_hurry": {"when": "booking is separate_tickets, risk_level is tight or at_risk and no assistance is declared: remind them to collect and re-check the bag"},
+            "self_transfer_missed": {"when": "booking is separate_tickets and risk_level is lost: the airline will not rebook, they must contact the onward airline"},
         },
     ),
 }

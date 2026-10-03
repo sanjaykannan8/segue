@@ -16,6 +16,7 @@ const PAGES: { href: string; label: string; roles: Role[] }[] = [
   { href: "/crew", label: "Crew list", roles: ["crew", "admin"] },
   { href: "/ground", label: "Ground queue", roles: ["ground", "admin"] },
   { href: "/authority", label: "Fast-track", roles: ["authority", "admin"] },
+  { href: "/demo", label: "Demo", roles: ["admin"] },
   { href: "/console", label: "Control panel", roles: ["admin"] },
 ];
 

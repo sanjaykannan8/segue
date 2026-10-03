@@ -145,3 +145,83 @@ type Departure = {
 ```
 
 `FlightInput` gains `dep_airport?: string` and `arr_airport?: string`. Send both (the `airport` and `to` used for the list) when the flight was picked from a `/flights/departures` list: the server then uses the row it already holds and spends no flight-data query. Each uncached airport search or departures list costs one query from a small allowance, so debounce typing and never refetch on every keystroke.
+
+## Booking type: one ticket or separate tickets
+
+A connection is `single_ticket` (both flights on one booking: the airline protects it, bags are checked through, rebooking is owed) or `separate_tickets` (self-transfer: the passenger collects and re-checks the bag, and the airline owes no hold or rebooking).
+
+- `POST /itineraries` takes `booking?: "single_ticket" | "separate_tickets"`. Left out, the server infers it: same airline code on both flights means `single_ticket`, otherwise `separate_tickets`.
+- `ConnectionView` gains `booking`. For `separate_tickets`, `steps` includes `{id: "recheck", label: "Collect and re-check your bag", minutes}` and `my_buffer_min` already accounts for it.
+- Crew list items gain `booking`.
+- New passenger message templates: `self_transfer_hurry`, `self_transfer_missed`.
+
+## Demo and trace (role `admin`)
+
+| Method | Path | Returns |
+|---|---|---|
+| GET | `/admin/demo` | `{demo: DemoState | null}` |
+| POST | `/admin/demo/run` | `{demo: DemoState}`. Seeds one connection (made-up flights, DEL → DXB → LHR, 75 minutes apart) with 8 made-up passengers: 6 on one booking (one with a declared wheelchair, two who allow fast-track requests) and 2 on separate tickets. Clears the trace. 409 if a demo is already running |
+| POST | `/admin/demo/reset` | `{erased}`. Erases the made-up passengers, clears the trace, returns the model breaker to automatic |
+| GET | `/admin/trace?limit=300` | `TraceEntry[]`, newest first |
+| GET | `/admin/trace/stream` | SSE, event `trace`, data = `TraceEntry` |
+
+Drive the scenario with the existing endpoints: `POST /admin/events {flight_id: demo.inbound.id, delay_min: 25}` (or `dep_gate` on the outbound), `POST /admin/breaker/model {state: "open" | "auto"}`, and `POST /ops/decisions/{id}/approve`.
+
+```ts
+type DemoState = {
+  connection_id: string; inbound: Flight; outbound: Flight; passengers: number;
+  risk: { level: string; buffer_min: number; left_min: number; needed_min: number; source: "model" | "rules"; confidence: number } | null;
+};
+
+type TraceEntry = {
+  id: string; at: string; event_id: string | null;
+  stage: "event" | "buffer" | "risk" | "ops" | "passenger" | "decision" | "publish" | "deliver";
+  title: string;                       // ready to show
+  detail: Record<string, unknown>;     // by stage, below
+};
+```
+
+`detail` by stage (entries with the same `event_id` belong to one event; no entry holds a name or personal ID):
+- `event`: `{type: "itinerary.created" | "flight.updated" | "itinerary.withdrawn", topic}`
+- `buffer`: `{connection, left_min, needed_min, buffer_min, steps: [{label, minutes}]}`
+- `risk`: `{connection, level, cache: "hit" | "miss", source?: "model" | "rules", confidence?, probabilities?, time_margin?, version, model_ms}`
+- `ops`: `{connection, answer, confidence, probabilities, protected_passengers, self_transfer_passengers}`
+- `passenger`: `{connection, seat, level, buffer_min, booking, answers: Record<question, {answer, confidence}>}` (`answers` is `{}` for a safe passenger: no model call)
+- `decision`: `{type, answer, confidence, gate: "auto" | "approval" | "human", target: routing key, seat}`
+- `publish`: `{routing_key, wait_ms}`
+- `deliver`: `{audience: "pax" | "ops" | "crew" | "ground" | "authority", queue, seat, template}`
+
+Measured on a real run: one 25-minute delay on the demo connection produced 1 event, 1 buffer, 1 risk (miss), 1 ops, 8 passenger, 23 decision, 23 publish and 23 deliver entries within a few seconds.
+
+
+## Demo board (role `admin`)
+
+`GET /admin/demo/board` returns the demo as a person would describe it. Empty arrays and `ops: null` when no demo is running.
+
+```ts
+type DemoBoard = {
+  story: string[];                       // plain sentences: what just happened, in order. Show as written
+  connection?: { inbound: Flight; outbound: Flight; left_min: number; needed_min: number; buffer_min: number; level: string | null; source: "model" | "rules" | null };
+  ops: { decision_id: string; title: string; detail: string; status: "pending" | "approved" | "dismissed" | "executed"; gate: string; confidence: number; decided_by: string | null } | null;
+  passengers: DemoPassenger[];           // ordered by seat row
+};
+
+type DemoPassenger = {
+  seat: string;
+  booking: "single_ticket" | "separate_tickets";
+  assistance: string | null;             // declared need, e.g. "wheelchair"
+  level: "safe" | "tight" | "at_risk" | "lost" | null;   // this passenger's own level
+  buffer_min: number;                    // this passenger's own buffer
+  why: string[];                         // why it differs from the connection's buffer, e.g. "row 45 gets off later (5 min)"
+  message: { title: string; body: string; template: string; at: string } | null;   // the latest message on their phone
+  earlier_messages: { title: string; at: string }[];
+  staff: {                               // what each staff group was told about this passenger
+    audience: "crew" | "ground" | "authority";
+    text: string;                        // ready to show, e.g. "Cabin crew: call seat 12A off the aircraft first"
+    state: "sent" | "waiting" | "dismissed";
+    note: string;                        // e.g. "Sent", "Waiting for ops to approve"
+    decision_id: string | null;          // set when state is "waiting": approve with POST /ops/decisions/{id}/approve
+    confidence: number;
+  }[];
+};
+```

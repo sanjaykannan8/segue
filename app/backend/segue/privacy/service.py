@@ -40,7 +40,7 @@ async def export(db: AsyncSession, principal_id: str) -> dict:
         "principal_id": principal_id,
         "profile": {"name": decrypt(pii.name_enc) if pii else None, "phone": decrypt(pii.phone_enc) if pii else None, "language": pii.language if pii else None},
         "consents": [{"purpose": c.purpose, "notice_version": c.notice_version, "granted_at": iso(c.granted_at), "withdrawn_at": iso(c.withdrawn_at)} for c in consents],
-        "itineraries": [{"id": i.id, "connection_id": i.connection_id, "seat": i.seat, "created_at": iso(i.created_at), "delete_after": iso(i.expires_at), "assistance": assistance.get(i.id)} for i in itineraries],
+        "itineraries": [{"id": i.id, "connection_id": i.connection_id, "seat": i.seat, "booking": i.booking, "created_at": iso(i.created_at), "delete_after": iso(i.expires_at), "assistance": assistance.get(i.id)} for i in itineraries],
         "decisions": [{"type": d.type, "answer": d.answer, "confidence": d.confidence, "gate": d.gate, "status": d.status, "created_at": iso(d.created_at)} for d in decisions],
         "messages": [{"title": f.payload.get("title"), "body": f.payload.get("body"), "created_at": iso(f.created_at)} for f in feed],
         "requests": [{"type": r.type, "status": r.status, "opened_at": iso(r.opened_at), "detail": decrypt(r.detail_enc)} for r in requests],
@@ -65,6 +65,11 @@ async def erase_principal(db: AsyncSession, principal_id: str, actor: str, reaso
     if ids:
         await db.execute(delete(AssistanceNeed).where(AssistanceNeed.itinerary_id.in_(ids)))
     await db.execute(delete(FeedItem).where(FeedItem.principal_id == principal_id))
+    if ids:
+        # Staff lists (crew, ground, authority) hold rows about the trip, keyed by itinerary: remove those too.
+        for item in (await db.execute(select(FeedItem).where(FeedItem.audience.in_(("crew", "ground", "authority"))))).scalars():
+            if (item.payload or {}).get("itinerary_id") in ids:
+                await db.delete(item)
     # Anything still waiting for a person can no longer be acted on: close it, then strip the identifiers.
     await db.execute(update(Decision).where(Decision.principal_id == principal_id, Decision.status == "pending").values(status="expired"))
     await db.execute(update(Decision).where(Decision.principal_id == principal_id).values(principal_id=None, itinerary_id=None, payload={}))

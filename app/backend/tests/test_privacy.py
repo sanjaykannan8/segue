@@ -85,3 +85,20 @@ async def test_retention_purges_people_who_never_added_a_trip(stub):
     async with db.session() as s:
         assert list((await s.execute(select(DataPrincipal.id))).scalars()) == ["fresh"]
     assert await count(PassengerPII) == 0
+
+
+async def test_erasure_removes_the_passenger_from_staff_lists(stub):
+    connection_id = await make_connection()
+    gone, gone_itinerary = await add_passenger(connection_id, "12A")
+    _, kept_itinerary = await add_passenger(connection_id, "14C")
+    async with db.session() as s:
+        s.add(FeedItem(audience="crew", payload={"itinerary_id": gone_itinerary, "seat": "12A"}))
+        s.add(FeedItem(audience="ground", payload={"itinerary_id": gone_itinerary, "seat": "12A"}))
+        s.add(FeedItem(audience="crew", payload={"itinerary_id": kept_itinerary, "seat": "14C"}))
+        await s.commit()
+    async with db.session() as s:
+        await erase_principal(s, gone, actor=gone, reason="erasure")
+        await s.commit()
+    async with db.session() as s:
+        left = [(f.audience, f.payload["seat"]) for f in (await s.execute(select(FeedItem))).scalars()]
+    assert left == [("crew", "14C")]

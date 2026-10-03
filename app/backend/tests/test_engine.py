@@ -141,3 +141,45 @@ async def test_model_state_holds_no_identity(stub):
     await run(connection_id, "e1")
     blob = repr(stub.states)
     assert "Priya" not in blob and principal_id not in blob and itinerary_id not in blob
+
+
+async def test_booking_type_reaches_the_model_and_the_arithmetic(stub):
+    stub.level = "safe"
+    connection_id = await make_connection(left_minutes=80)  # 80 - 20 - 26 = 34: safe on one ticket
+    await add_passenger(connection_id, "20A", booking="single_ticket")
+    await add_passenger(connection_id, "20C", booking="separate_tickets")  # needs 35 more: buffer -1
+    await run(connection_id, "e1")
+    asked = [s for s in stub.states if "booking" in s]
+    assert [s["booking"] for s in asked] == ["separate_tickets"], "only the self-transfer passenger is short of time"
+    assert asked[0]["risk_level"] == "at_risk"
+
+
+async def test_ops_counts_only_protected_passengers(stub):
+    connection_id = await make_connection()
+    await add_passenger(connection_id, "12A", booking="single_ticket")
+    await add_passenger(connection_id, "14C", booking="separate_tickets")
+    await add_passenger(connection_id, "15C", booking="separate_tickets")
+    await run(connection_id, "e1")
+    ops_state = next(s for s in stub.states if "protected_passengers" in s)
+    assert (ops_state["protected_passengers"], ops_state["self_transfer_passengers"]) == (1, 2)
+
+
+async def test_instruction_is_withdrawn_when_it_no_longer_applies(stub):
+    connection_id = await make_connection()
+    _, itinerary_id = await add_passenger(connection_id)
+    await run(connection_id, "e1")
+    assert [o.payload.get("retract") for o in await rows(Outbox, Outbox.routing_key == "crew.deplane")] == [None]
+
+    async def changed_mind(state):  # the situation changed: the crew should no longer call this passenger first
+        answers = await type(stub).ask_passenger(stub, state)
+        answers["crew_priority_deplane"] = type(answers["crew_priority_deplane"])("no", 0.95, {})
+        return answers
+
+    stub_original, stub.ask_passenger = stub.ask_passenger, changed_mind
+    await run(connection_id, "e2")
+    crew = await rows(Outbox, Outbox.routing_key == "crew.deplane")
+    assert [o.payload.get("retract") for o in crew] == [None, True], "the crew list is told to drop the passenger"
+    latest = sorted(await rows(Decision, Decision.type == "crew_priority_deplane"), key=lambda d: d.created_at)[-1]
+    assert latest.answer == "no"
+    await run(connection_id, "e3")
+    assert len(await rows(Outbox, Outbox.routing_key == "crew.deplane")) == 2, "a withdrawal is sent once"

@@ -78,3 +78,4 @@
 .breakers .breaker:last-child { padding-bottom: var(--space-4); }
 .chartBox { max-width: 40rem; margin-bottom: var(--space-5); }
 .tile { background: var(--surface-muted); }
+.badges { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }

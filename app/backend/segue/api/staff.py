@@ -139,7 +139,7 @@ async def crew_list(user: dict = staff("crew", "ops"), db: AsyncSession = Depend
         if flight is None:
             continue
         items.sort(key=lambda p: p["buffer_min"])
-        out.append({"flight": flights.view(flight), "items": [{"rank": i + 1, "seat": p.get("seat"), "onward": p["onward"], "onward_dest": p["onward_dest"], "buffer_min": p["buffer_min"], "level": p["level"], "assistance": p.get("assistance")} for i, p in enumerate(items)]})
+        out.append({"flight": flights.view(flight), "items": [{"rank": i + 1, "seat": p.get("seat"), "onward": p["onward"], "onward_dest": p["onward_dest"], "buffer_min": p["buffer_min"], "level": p["level"], "assistance": p.get("assistance"), "booking": p.get("booking", "single_ticket")} for i, p in enumerate(items)]})
     await audit(db, user["email"], user["role"], "read", "crew list (seats, assistance flags)")
     await db.commit()
     return out

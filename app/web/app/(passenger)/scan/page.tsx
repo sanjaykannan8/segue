@@ -9,11 +9,12 @@ import { Button } from "@/components/arc/button/button";
 import { Input } from "@/components/arc/input/input";
 import { Select } from "@/components/arc/select/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/arc/tabs/tabs";
+import { BookingChoice } from "@/components/segue/booking-choice";
 import { choiceSummary, choiceToInput, FlightPicker, type FlightChoice } from "@/components/segue/flight-picker";
 import { HeaderLink, PassengerShell } from "@/components/segue/passenger-shell";
 import { PassScanner } from "@/components/segue/pass-scanner";
 import { ErrorState, FormError, LoadingPanel, Panel } from "@/components/segue/ui";
-import { api, isStatus, useResource, type AssistanceType } from "@/lib/api";
+import { api, isStatus, useResource, type AssistanceType, type Booking } from "@/lib/api";
 import type { Bcbp } from "@/lib/bcbp";
 import { ASSISTANCE_OPTIONS, flightLabel } from "@/lib/format";
 import styles from "../passenger.module.css";
@@ -27,6 +28,7 @@ export default function ScanPage() {
   const [prefill, setPrefill] = useState<{ inbound?: string; outbound?: string; stamp: number }>({ stamp: 0 });
   const [seat, setSeat] = useState("");
   const [assistance, setAssistance] = useState<AssistanceType>("none");
+  const [bookingChoice, setBookingChoice] = useState<Booking | null>(null);
   const [scanned, setScanned] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState<unknown>(null);
@@ -37,6 +39,10 @@ export default function ScanPage() {
 
   const canShareAssistance = me.data?.consents.some((c) => c.purpose === "assistance" && !c.withdrawn_at) ?? false;
   const first = inbound ? choiceSummary(inbound) : null;
+  const second = outbound ? choiceSummary(outbound) : null;
+  // Same airline code on both flights usually means one booking; the passenger can change it.
+  const inferred: Booking = first && second && first.iata.slice(0, 2) === second.iata.slice(0, 2) ? "single_ticket" : "separate_tickets";
+  const booking = bookingChoice ?? inferred;
 
   function onScan(pass: Bcbp) {
     const [one, two] = pass.legs;
@@ -58,6 +64,7 @@ export default function ScanPage() {
       await api.createItinerary({
         inbound: choiceToInput(inbound),
         outbound: choiceToInput(outbound),
+        booking,
         ...(seat.trim() ? { seat: seat.trim().toUpperCase() } : {}),
         ...(canShareAssistance ? { assistance } : {}),
       });
@@ -110,7 +117,7 @@ export default function ScanPage() {
                 step={1}
                 title="Your first flight"
                 value={inbound}
-                onChange={(choice) => { setInbound(choice); setOutbound(null); }}
+                onChange={(choice) => { setInbound(choice); setOutbound(null); setBookingChoice(null); }}
                 prefillNumber={prefill.inbound}
               />
 
@@ -122,7 +129,7 @@ export default function ScanPage() {
                     step={2}
                     title="Your connecting flight"
                     value={outbound}
-                    onChange={setOutbound}
+                    onChange={(choice) => { setOutbound(choice); setBookingChoice(null); }}
                     from={/^[A-Z]{3}$/.test(first.dest) ? { airport: first.dest, after: first.arr } : undefined}
                     prefillNumber={prefill.outbound}
                   />
@@ -132,6 +139,7 @@ export default function ScanPage() {
               {inbound && outbound ? (
                 <>
                   <hr className={styles.divider} style={{ margin: 0 }} />
+                  <BookingChoice value={booking} onChange={setBookingChoice} />
                   <Input label="Seat on your first flight (optional)" placeholder="12A" autoCapitalize="characters" autoComplete="off" value={seat} onChange={(event) => setSeat(event.target.value)} description="Helps the crew let you off first if time is short." />
                   {canShareAssistance ? (
                     <Select

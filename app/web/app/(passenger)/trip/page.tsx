@@ -204,6 +204,10 @@ export default function TripPage() {
         <ErrorState error={connection.error} onRetry={() => void connection.reload()} title="Your connection didn't load" />
       )}
 
+      {view?.booking === "separate_tickets" ? (
+        <Alert tone="info" title="Separate tickets">Collect your bag and check in again for {flightLabel(view.outbound.flight_iata)}. The airline will not rebook you automatically.</Alert>
+      ) : null}
+
       {view ? <div className={styles.quietRow}><DeviceLinkButton variant="ghost" /></div> : null}
 
       <Panel label="Messages">

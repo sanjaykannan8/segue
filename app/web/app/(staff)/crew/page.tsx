@@ -51,7 +51,12 @@ function FlightList({ entry }: { entry: CrewFlight }) {
                   <td className={styles.nowrap}>{flightLabel(item.onward)}</td>
                   <td>{item.onward_dest}</td>
                   <td className={`${styles.right} ${styles.num} ${styles.nowrap}`}>{formatBuffer(item.buffer_min)}</td>
-                  <td><RiskBadge level={item.level} size="sm" /></td>
+                  <td>
+                    <span className={styles.badges}>
+                      <RiskBadge level={item.level} size="sm" />
+                      {item.booking === "separate_tickets" ? <Badge size="sm" tone="neutral">Separate tickets</Badge> : null}
+                    </span>
+                  </td>
                   <td>
                     {item.assistance && item.assistance !== "none"
                       ? <Badge size="sm" tone="info" icon={<Accessibility width={12} height={12} aria-hidden="true" />}>{humanize(item.assistance)}</Badge>

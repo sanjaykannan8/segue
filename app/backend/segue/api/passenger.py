@@ -62,6 +62,8 @@ class ItineraryIn(BaseModel):
     outbound: FlightInput
     seat: str | None = Field(None, max_length=6)
     assistance: Assistance | None = None
+    # How the two flights were booked. Left out: inferred from the airline codes (same airline = one booking).
+    booking: Literal["single_ticket", "separate_tickets"] | None = None
 
 
 class ProfileIn(BaseModel):
@@ -118,10 +120,13 @@ async def connection_view(db: AsyncSession, itinerary: Itinerary) -> dict:
     if arrival and departure:
         base = buf.connection_buffer(connection.airport, arrival, departure, inbound.arr_terminal, outbound.dep_terminal)
         steps = [{"id": step, "label": label, "minutes": minutes} for step, label, minutes in base.steps]
-        my_buffer = base.buffer_min - buf.passenger_offset(connection.airport, base, itinerary.seat, assistance)
+        my_buffer = base.buffer_min - buf.passenger_offset(connection.airport, base, itinerary.seat, assistance, itinerary.booking)
+        if itinerary.booking == "separate_tickets":
+            extra = int(buf.airport_config(connection.airport)["self_transfer_extra_min"])
+            steps.insert(2, {"id": "recheck", "label": "Collect and re-check your bag", "minutes": extra})
     return {
         "itinerary_id": itinerary.id, "connection_id": connection.id, "airport": connection.airport,
-        "inbound": flights.view(inbound), "outbound": flights.view(outbound), "seat": itinerary.seat,
+        "inbound": flights.view(inbound), "outbound": flights.view(outbound), "seat": itinerary.seat, "booking": itinerary.booking,
         "risk": risk, "my_buffer_min": my_buffer, "steps": steps,
         "assistance": {"type": assistance} if assistance else None,
         "degraded": bool(risk and risk["source"] == "rules"),
@@ -317,7 +322,8 @@ async def add_itinerary(body: ItineraryIn, request: Request, principal_id: str =
         await db.execute(delete(Itinerary).where(Itinerary.id.in_(old)))
     departure = outbound.est_dep or outbound.sched_dep
     departure = departure.replace(tzinfo=timezone.utc) if departure and departure.tzinfo is None else departure
-    itinerary = Itinerary(id=uid(), principal_id=principal_id, connection_id=connection.id, seat=_code(body.seat) if body.seat else None, expires_at=(departure or now()) + timedelta(hours=get_settings().retention_hours))
+    booking = body.booking or ("single_ticket" if inbound.flight_iata[:2] == outbound.flight_iata[:2] else "separate_tickets")
+    itinerary = Itinerary(id=uid(), principal_id=principal_id, connection_id=connection.id, seat=_code(body.seat) if body.seat else None, booking=booking, expires_at=(departure or now()) + timedelta(hours=get_settings().retention_hours))
     db.add(itinerary)
     await db.flush()
     if body.assistance and body.assistance != "none":

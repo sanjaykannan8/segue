@@ -10,6 +10,7 @@ from sqlalchemy import or_, select
 from ..core.bus import TOPIC_DLQ, TOPIC_FLIGHT, TOPIC_ITINERARY, kafka_producer, notify
 from ..core.db import Connection, DeadEvent, session
 from ..core.settings import get_settings
+from ..core.trace import trace
 from .core import process_connection
 
 log = logging.getLogger("segue.engine")
@@ -18,6 +19,7 @@ ATTEMPTS = 3
 
 async def handle(event: dict) -> None:
     kind, event_id = event["type"], event["event_id"]
+    await trace(event_id, "event", {"itinerary.created": "A passenger added a trip", "flight.updated": "A flight changed", "itinerary.withdrawn": "A passenger left"}.get(kind, kind), type=kind, topic="itinerary.events" if kind.startswith("itinerary") else "flight.events")
     async with session() as db:
         if kind == "itinerary.created":
             targets, only = [event["connection_id"]], event.get("itinerary_id")

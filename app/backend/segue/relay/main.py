@@ -11,6 +11,7 @@ from sqlalchemy import select
 from ..core.breaker import Breaker, BreakerOpen
 from ..core.bus import EXCHANGE, declare_topology, rabbit_connect, redis
 from ..core.db import Outbox, now, session
+from ..core.trace import trace
 
 log = logging.getLogger("segue.relay")
 
@@ -33,6 +34,7 @@ async def publish_batch(exchange: aio_pika.abc.AbstractExchange) -> int:
             )
             await exchange.publish(message, routing_key=row.routing_key)  # confirmed by the broker before we mark it
             row.sent_at = now()
+            await trace(row.payload.get("event_id"), "publish", f"Outbox → RabbitMQ: {row.routing_key}", routing_key=row.routing_key, wait_ms=round((now() - row.created_at).total_seconds() * 1000))
         await db.commit()
         return len(rows)
 

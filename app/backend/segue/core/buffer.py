@@ -25,6 +25,8 @@ DEFAULT = {
     "walk_other_terminal_min": 22,
     "queue_min": 8,             # transfer security, when no live figure exists
     "assistance_factor": {"wheelchair": 1.5, "buggy": 0.8, "escort": 1.0, "step_free_route": 1.3},
+    # Separate tickets: collect the bag, go landside, check in and clear security again.
+    "self_transfer_extra_min": 35,
     "walk": {},                 # "T1>T3": minutes, overrides the two defaults above
 }
 
@@ -71,7 +73,7 @@ def seat_row(seat: str | None) -> int | None:
     return int(match.group(1)) if match else None
 
 
-def passenger_offset(airport: str, base: Buffer, seat: str | None, assistance: str | None) -> int:
+def passenger_offset(airport: str, base: Buffer, seat: str | None, assistance: str | None, booking: str = "single_ticket") -> int:
     """Minutes to subtract from the connection buffer for this passenger (negative means more time)."""
     config = airport_config(airport)
     offset = 0.0
@@ -82,6 +84,8 @@ def passenger_offset(airport: str, base: Buffer, seat: str | None, assistance: s
     if assistance and assistance != "none":
         walk = next(minutes for step, _, minutes in base.steps if step == "walk")
         offset += walk * (float(config["assistance_factor"].get(assistance, 1.0)) - 1.0)
+    if booking == "separate_tickets":
+        offset += float(config["self_transfer_extra_min"])
     return round(offset)
 
 

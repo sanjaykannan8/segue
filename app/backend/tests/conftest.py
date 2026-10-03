@@ -50,6 +50,7 @@ class StubModel:
         if self.fail:
             raise TimeoutError("model down")
         self.ops_calls += 1
+        self.states.append(state)
         return Answer("hold_flight", 0.95, {"hold_flight": 0.95})
 
     async def ask_passenger(self, state):
@@ -92,7 +93,7 @@ async def make_connection(left_minutes: int = 40) -> str:
         return connection.id
 
 
-async def add_passenger(connection_id: str, seat: str = "12A", purposes=("tracking", "notifications"), assistance: str | None = None, name: str = "Priya Sharma") -> tuple[str, str]:
+async def add_passenger(connection_id: str, seat: str = "12A", purposes=("tracking", "notifications"), assistance: str | None = None, name: str = "Priya Sharma", booking: str = "single_ticket") -> tuple[str, str]:
     async with db.session() as s:
         principal = DataPrincipal(id=uid())
         s.add(principal)
@@ -100,7 +101,7 @@ async def add_passenger(connection_id: str, seat: str = "12A", purposes=("tracki
         s.add(PassengerPII(principal_id=principal.id, name_enc=encrypt(name), language="en"))
         for purpose in purposes:
             s.add(Consent(principal_id=principal.id, purpose=purpose, notice_version="t"))
-        itinerary = Itinerary(id=uid(), principal_id=principal.id, connection_id=connection_id, seat=seat, expires_at=now() + timedelta(hours=30))
+        itinerary = Itinerary(id=uid(), principal_id=principal.id, connection_id=connection_id, seat=seat, booking=booking, expires_at=now() + timedelta(hours=30))
         s.add(itinerary)
         await s.flush()
         if assistance:

@@ -41,7 +41,7 @@ const COLUMNS: DataColumn<Row>[] = [
 ];
 
 const GATE = {
-  auto: { label: "Auto", tone: "neutral", Icon: Zap },
+  auto: { label: "Runs itself", tone: "neutral", Icon: Zap },
   approval: { label: "Needs approval", tone: "info", Icon: ShieldCheck },
   human: { label: "Needs a person", tone: "info", Icon: User },
 } as const;

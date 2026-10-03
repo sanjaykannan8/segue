@@ -32,6 +32,7 @@ def test_passenger_offset():
     assert buf.passenger_offset("DXB", base, "45K", None) == 5  # 25 rows back, 12 s each
     assert buf.passenger_offset("DXB", base, "5A", None) == -3  # near the door: time back
     assert buf.passenger_offset("DXB", base, "20A", "wheelchair") == 6  # walk 12 min x 1.5
+    assert buf.passenger_offset("DXB", base, "20A", None, "separate_tickets") == 35  # collect and re-check the bag
 
 
 def test_rule_levels():

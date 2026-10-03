@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 
 from ..core.bus import AUDIENCE, EXCHANGE_DLQ, RETRY_DELAYS_MS, declare_topology, notify, rabbit_connect, retry_queue
 from ..core.db import FeedItem, PassengerPII, ProcessedMessage, session
+from ..core.trace import trace
 from .templates import render
 
 log = logging.getLogger("segue.consumers")
@@ -37,11 +38,16 @@ async def deliver(queue_name: str, message_id: str, payload: dict) -> None:
                 for row in stale:
                     if row.payload.get("itinerary_id") == payload["itinerary_id"]:
                         await db.execute(delete(FeedItem).where(FeedItem.id == row.id))
-            item = FeedItem(audience=audience, principal_id=payload.get("principal_id"), connection_id=payload.get("connection_id"), decision_id=payload.get("decision_id"), payload=payload)
-            db.add(item)
+            if payload.get("retract"):
+                item = None  # the instruction was withdrawn: the stale row above is gone and nothing replaces it
+            else:
+                item = FeedItem(audience=audience, principal_id=payload.get("principal_id"), connection_id=payload.get("connection_id"), decision_id=payload.get("decision_id"), payload=payload)
+                db.add(item)
         else:
             item = None  # the ops dashboard reads decisions directly; this message only triggers a refresh
         await db.commit()
+    WHO = {"pax": "the passenger", "ops": "the ops dashboard", "crew": "the cabin crew list", "ground": "the dispatch queue", "authority": "the airport authority list"}
+    await trace(payload.get("event_id"), "deliver", f"Delivered to {WHO[audience]}", audience=audience, queue=queue_name, seat=payload.get("seat"), template=payload.get("template"))
     if audience == "pax" and item is not None:
         await notify("pax", "feed", {"id": item.id, **item.payload, "created_at": item.created_at.isoformat()}, principal_id=principal_id)
     else:
