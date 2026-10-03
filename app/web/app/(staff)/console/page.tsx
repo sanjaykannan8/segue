@@ -7,7 +7,10 @@ import { Button } from "@/components/arc/button/button";
 import { Dialog, DialogClose, DialogContent } from "@/components/arc/dialog/dialog";
 import { EmptyState } from "@/components/arc/empty-state/empty-state";
 import { Input } from "@/components/arc/input/input";
-import { Progress } from "@/components/arc/progress/progress";
+import { BarChart } from "@/components/arc/bar-chart/bar-chart";
+import { DonutChart } from "@/components/arc/donut-chart/donut-chart";
+import { LineChart } from "@/components/arc/line-chart/line-chart";
+import { UsageMeter } from "@/components/arc/usage-meter/usage-meter";
 import SegmentedControl from "@/components/arc/segmented-control/segmented-control";
 import { Select } from "@/components/arc/select/select";
 import { Skeleton } from "@/components/arc/skeleton/skeleton";
@@ -16,6 +19,7 @@ import { useToast } from "@/components/segue/toasts";
 import { ErrorState, FormError, Mascot, Panel, PanelHeader, StaleNote } from "@/components/segue/ui";
 import { api, errorMessage, useResource, type Breaker, type DlqReplayBody, type Flight, type InjectEventBody } from "@/lib/api";
 import { flightLabel, flightStatusLabel, formatAge, formatDateTime, humanize } from "@/lib/format";
+import { clockTime, useSessionSeries } from "@/lib/hooks";
 import styles from "../staff.module.css";
 
 const BREAKER_MODES = [
@@ -54,7 +58,7 @@ function BreakerRow({ breaker, onChanged }: { breaker: Breaker; onChanged: () =>
       <div>
         <p className={styles.breakerName}>
           {humanize(breaker.name)}
-          <Badge size="sm" tone={breaker.state === "closed" ? "neutral" : "danger"} icon={breaker.state === "closed" ? <Check width={12} height={12} aria-hidden="true" /> : <X width={12} height={12} aria-hidden="true" />}>
+          <Badge size="sm" tone={breaker.state === "closed" ? "neutral" : "info"} icon={breaker.state === "closed" ? <Check width={12} height={12} aria-hidden="true" /> : <X width={12} height={12} aria-hidden="true" />}>
             {BREAKER_STATE[breaker.state] ?? humanize(breaker.state)}
           </Badge>
         </p>
@@ -145,12 +149,16 @@ export default function ConsolePage() {
   const refreshAll = () => { void health.reload(); void flights.reload(); void dlq.reload(); void audit.reload(); };
   const services = Object.entries(health.data?.services ?? {});
   const down = services.filter(([, service]) => !service.ok).length;
+  const healthData = health.data;
+  const outbox = useSessionSeries(healthData, () => (healthData ? { pending: healthData.outbox_pending } : null));
+  const queueBars = (dlq.data?.queues ?? []).map((queue) => ({ key: queue.name, label: queue.name, axisLabel: queue.name.replace(/.dlq$/, ""), value: queue.messages }));
+  const waiting = queueBars.reduce((sum, bar) => sum + bar.value, 0);
 
   return (
     <>
       <StaffHeading
         title="Control panel"
-        hint="Service health, breakers, test events and dead letters."
+        hint="Service health, breakers, test events and dead letters, in one place."
         aside={<div className={styles.headRow}><Mascot pose="code" size={48} /><Button variant="secondary" size="sm" onClick={refreshAll}>Refresh</Button></div>}
       />
 
@@ -160,14 +168,52 @@ export default function ConsolePage() {
 
       {health.data ? (
         <>
+          <div className={styles.charts}>
+            <Panel label="Health summary">
+              <PanelHeader title="Health" hint={services.length === 0 ? "No services reported." : `${services.length - down} of ${services.length} services healthy. Checked every 5 seconds.`} />
+              <DonutChart
+                data={[
+                  { key: "healthy", label: "Healthy", value: services.length - down, color: "var(--chart-1)" },
+                  { key: "down", label: "Down", value: down, color: "var(--chart-3)" },
+                ]}
+                label="Services by health"
+                unit="services"
+                totalLabel="Services"
+                size={148}
+                thickness={20}
+                groupBelow={0}
+                emptyLabel="No services reported"
+              />
+            </Panel>
+
+            <Panel label="AirLabs budget">
+              <PanelHeader title="AirLabs budget" hint="Flight status calls against the budget." />
+              <UsageMeter label="Calls used" segments={[{ id: "used", label: "Used", value: health.data.airlabs.used }]} limit={health.data.airlabs.budget} unit="calls" decimals={0} freeLabel="Left" overLabel="Over budget" />
+            </Panel>
+
+            <Panel label="Outbox">
+              <PanelHeader title="Outbox" hint={`${health.data.outbox_pending} pending now. Trend since you opened this page.`} />
+              <LineChart
+                data={outbox.length > 1 ? outbox.map((sample, index) => ({ key: String(sample.at), label: clockTime(sample.at), axisLabel: index === 0 || index === outbox.length - 1 ? clockTime(sample.at) : undefined, values: { pending: sample.pending } })) : []}
+                series={[{ key: "pending", label: "Pending decisions", color: "var(--chart-1)" }]}
+                label="Outbox pending"
+                height={132}
+                legend={false}
+                categoryLabel="Time"
+                emptyLabel="Collecting. The line appears after the next check"
+                formatTick={(value) => String(Math.round(value))}
+              />
+            </Panel>
+          </div>
+
           <Panel label="Service health">
-            <PanelHeader title="Service health" hint={services.length === 0 ? "No services reported." : down === 0 ? "All services are up. Checked every 5 seconds." : `${down} of ${services.length} down. Checked every 5 seconds.`} />
+            <PanelHeader title="Services" hint={down === 0 ? "All services are up." : `${down} down.`} />
             <div className={styles.tiles}>
               {services.map(([name, service]) => (
                 <div key={name} className={styles.tile}>
                   <div className={styles.tileTop}>
                     <span className={styles.tileName}>{humanize(name)}</span>
-                    <Badge size="sm" tone={service.ok ? "info" : "danger"} icon={service.ok ? <Check width={12} height={12} aria-hidden="true" /> : <X width={12} height={12} aria-hidden="true" />}>{service.ok ? "OK" : "Down"}</Badge>
+                    <Badge size="sm" tone={service.ok ? "info" : "neutral"} icon={service.ok ? <Check width={12} height={12} aria-hidden="true" /> : <X width={12} height={12} aria-hidden="true" />}>{service.ok ? "OK" : "Down"}</Badge>
                   </div>
                   <p className={styles.tileDetail}>{service.detail || (service.ok ? "Responding" : "No detail given")}</p>
                 </div>
@@ -175,32 +221,14 @@ export default function ConsolePage() {
             </div>
           </Panel>
 
-          <div className={styles.consoleGrid}>
-            <Panel label="Circuit breakers">
-              <PanelHeader title="Breakers" hint="Auto lets each breaker open and close itself." />
+          <Panel label="Circuit breakers">
+            <PanelHeader title="Breakers" hint="Auto lets each breaker open and close itself." />
+            <div className={styles.breakers}>
               {health.data.breakers.length
                 ? health.data.breakers.map((breaker) => <BreakerRow key={breaker.name} breaker={breaker} onChanged={() => void health.reload()} />)
                 : <p className={styles.muted}>No breakers reported.</p>}
-            </Panel>
-
-            <div className={styles.stack}>
-              <Panel label="AirLabs budget">
-                <PanelHeader title="AirLabs budget" hint="Flight status calls used." />
-                <div className={styles.statRow}>
-                  <span className={styles.bigNumber}>{health.data.airlabs.used}</span>
-                  <span className={styles.muted}>of {health.data.airlabs.budget} calls</span>
-                </div>
-                <Progress value={health.data.airlabs.used} max={health.data.airlabs.budget || 1} label="Budget used" showValue />
-              </Panel>
-              <Panel label="Outbox">
-                <PanelHeader title="Outbox" hint="Decisions saved but not yet published." />
-                <div className={styles.statRow} style={{ marginBottom: 0 }}>
-                  <span className={styles.bigNumber}>{health.data.outbox_pending}</span>
-                  <span className={styles.muted}>pending</span>
-                </div>
-              </Panel>
             </div>
-          </div>
+          </Panel>
         </>
       ) : null}
 
@@ -286,6 +314,11 @@ export default function ConsolePage() {
             )}
 
             <h3 className={styles.sub}>Dead-letter queues</h3>
+            {queueBars.length ? (
+              <div className={styles.chartBox}>
+                <BarChart data={queueBars} label="Dead-letter queue depth" period={waiting === 0 ? "All queues are empty" : "Messages waiting, by queue"} unit="messages" averageLabel="Average depth" valueLabel="Depth" categoryLabel="Queue" showAverage={false} height={132} />
+              </div>
+            ) : null}
             {dlq.data.queues.length === 0 ? <p className={styles.muted}>No queues reported.</p> : (
               <div className={styles.tableWrap}>
                 <table className={styles.table}>

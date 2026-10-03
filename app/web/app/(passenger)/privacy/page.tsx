@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Download } from "lucide-react";
 import { Badge } from "@/components/arc/badge/badge";
@@ -11,6 +12,7 @@ import { Input } from "@/components/arc/input/input";
 import { Select } from "@/components/arc/select/select";
 import { Skeleton } from "@/components/arc/skeleton/skeleton";
 import { Switch } from "@/components/arc/switch/switch";
+import { DeviceLinkButton } from "@/components/segue/device-link";
 import { HeaderLink, PassengerShell } from "@/components/segue/passenger-shell";
 import { useToast } from "@/components/segue/toasts";
 import { ErrorState, Fact, FormError, LoadingPanel, Mascot, Panel, PanelHeader } from "@/components/segue/ui";
@@ -189,7 +191,7 @@ export default function PrivacyPage() {
   }
 
   return (
-    <PassengerShell title="Your data" intro="See, change, download or delete what Segue holds about you." action={back}>
+    <PassengerShell title="Your data" intro={<>See, change, download or delete what Segue holds about you. <Link href="/privacy-policy">Read the privacy policy</Link></>} action={back}>
       <Panel>
         <PanelHeader title="What we hold" />
         <dl className={styles.facts}>
@@ -199,10 +201,11 @@ export default function PrivacyPage() {
           <Fact label="Trip">{data.has_itinerary ? "One connection" : "None yet"}</Fact>
           <Fact label="Your Segue ID">{data.principal_id}</Fact>
         </dl>
-        <div style={{ marginTop: "var(--space-5)" }}>
+        <div className={styles.fields} style={{ marginTop: "var(--space-5)" }}>
           <Button variant="secondary" onClick={download} loading={downloading} className={styles.full}>
             <Download width={16} height={16} aria-hidden="true" /> Download my data
           </Button>
+          <DeviceLinkButton className={styles.full} />
         </div>
       </Panel>
 

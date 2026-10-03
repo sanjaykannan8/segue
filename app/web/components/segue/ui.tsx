@@ -40,7 +40,7 @@ export function RiskBadge({ level, size = "md" }: { level: string | null | undef
   );
 }
 
-/** A white (or dark surface) panel: the basic container on every screen. */
+/** A white panel: the basic container on every screen. */
 export function Panel({ children, className, label }: { children: ReactNode; className?: string; label?: string }) {
   return <section className={[styles.panel, className].filter(Boolean).join(" ")} aria-label={label}>{children}</section>;
 }

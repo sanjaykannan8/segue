@@ -5,11 +5,14 @@ import { ShieldCheck, User, Zap } from "lucide-react";
 import { Alert } from "@/components/arc/alert/alert";
 import { Badge } from "@/components/arc/badge/badge";
 import { Button } from "@/components/arc/button/button";
+import { SlopeChart } from "@/components/arc/slope-chart/slope-chart";
 import { Card } from "@/components/arc/card/card";
+import { DonutChart } from "@/components/arc/donut-chart/donut-chart";
 import { EmptyState } from "@/components/arc/empty-state/empty-state";
 import { MetricCard } from "@/components/arc/metric-card/metric-card";
 import { Progress } from "@/components/arc/progress/progress";
 import { Skeleton } from "@/components/arc/skeleton/skeleton";
+import { Sparkline } from "@/components/arc/sparkline/sparkline";
 import { SortableDataTable, type DataColumn } from "@/components/arc/sortable-data-table/sortable-data-table";
 import { LiveState, StaffHeading } from "@/components/segue/staff-shell";
 import { useToast } from "@/components/segue/toasts";
@@ -17,7 +20,7 @@ import { ErrorState, Mascot, Panel, PanelHeader, RiskBadge, RiskIcon, StaleNote 
 import { useLive } from "@/components/segue/use-live";
 import { api, errorMessage, type OpsAction, type OpsBoard, type RiskLevel } from "@/lib/api";
 import { ageSince, asRiskLevel, flightLabel, formatAge, formatBuffer, formatMinutes, humanize, RISK_LABEL, RISK_LEVELS, RISK_RANK } from "@/lib/format";
-import { useNow } from "@/lib/hooks";
+import { clockTime, useNow, useSessionSeries } from "@/lib/hooks";
 import styles from "../staff.module.css";
 
 type Row = {
@@ -42,6 +45,16 @@ const GATE = {
   approval: { label: "Needs approval", tone: "info", Icon: ShieldCheck },
   human: { label: "Needs a person", tone: "info", Icon: User },
 } as const;
+
+const RISK_COLOR: Record<RiskLevel, string> = { safe: "#0DB879", tight: "#F3AD20", at_risk: "#F48120", lost: "#F15F55" };
+/** Action states are not risk, so they use the brand blues. */
+const ACTION_STATES = [
+  { key: "pending", label: "Pending", color: "var(--chart-1)" },
+  { key: "approved", label: "Approved", color: "var(--chart-2)" },
+  { key: "executed", label: "Executed", color: "var(--chart-3)" },
+  { key: "dismissed", label: "Dismissed", color: "var(--chart-4)" },
+  { key: "expired", label: "Expired", color: "var(--chart-5)" },
+] as const;
 
 const CONTEXT: Record<RiskLevel, string> = {
   safe: "passengers with time to spare",
@@ -121,12 +134,20 @@ export default function OpsPage() {
     };
   }), [data]);
 
+  const history = useSessionSeries(data, () => (data ? { safe: data.counts.safe ?? 0, tight: data.counts.tight ?? 0, at_risk: data.counts.at_risk ?? 0, lost: data.counts.lost ?? 0 } : null));
+
+  const riskSlices = useMemo(() => RISK_LEVELS.map((level) => ({ key: level, label: RISK_LABEL[level], value: data?.counts[level] ?? 0, color: RISK_COLOR[level] })), [data]);
+  const scored = rows.filter((row) => row.buffer !== null).length;
+  // Needs -> has, one line per connection: a line that falls is a connection short of time (negative buffer).
+  const slopes = useMemo(() => rows.filter((row) => row.left !== null && row.needed !== null).sort((a, b) => (a.buffer ?? 0) - (b.buffer ?? 0)).slice(0, 8).map((row) => ({ key: row.id, label: row.label, start: Math.round(row.needed ?? 0), end: Math.round(row.left ?? 0) })), [rows]);
+  const actionSlices = useMemo(() => ACTION_STATES.map((state) => ({ key: state.key, label: state.label, color: state.color, value: (data?.actions ?? []).filter((action) => action.status === state.key).length })).filter((slice) => slice.value > 0), [data]);
+
   const replaceAction = (next: OpsAction) => board.setData((current) => current && { ...current, actions: current.actions.map((action) => (action.decision_id === next.decision_id ? next : action)) });
   const pending = data?.actions.filter((action) => action.status === "pending").length ?? 0;
 
   return (
     <>
-      <StaffHeading title="Ops board" hint="Connections by risk, with suggested actions." aside={<LiveState state={board.stream} />} />
+      <StaffHeading title="Ops board" hint="Every watched connection by risk, with the actions waiting for you." aside={<LiveState state={board.stream} />} />
 
       {data?.degraded ? (
         <Alert tone="info" title="Degraded mode">The decision model is unavailable. Risk comes from fixed rules and nothing runs automatically.</Alert>
@@ -139,12 +160,44 @@ export default function OpsPage() {
       {data ? (
         <>
           <div className={styles.metrics}>
-            {RISK_LEVELS.map((level) => (
-              <div key={level} className={styles.metric} data-risk={level}>
-                <MetricCard label={RISK_LABEL[level]} value={data.counts[level] ?? 0} context={CONTEXT[level]} />
-                <span className={styles.metricIcon}><RiskIcon level={level} size={16} /></span>
-              </div>
-            ))}
+            {RISK_LEVELS.map((level) => {
+              const points = history.map((sample) => sample[level]);
+              const change = points.length > 1 ? points[points.length - 1] - points[0] : 0;
+              return (
+                <div key={level} className={styles.metric} data-risk={level}>
+                  <span className={styles.metricIcon}><RiskIcon level={level} size={16} /></span>
+                  <MetricCard label={RISK_LABEL[level]} value={data.counts[level] ?? 0} context={CONTEXT[level]} />
+                  <div className={styles.metricTrend} data-risk-accent>
+                    <Sparkline
+                      data={points}
+                      labels={history.map((sample) => clockTime(sample.at))}
+                      label="Since you opened this page"
+                      change={points.length > 1 ? (change === 0 ? "No change" : `${change > 0 ? "+" : "−"}${Math.abs(change)}`) : "Just started"}
+                      height={40}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className={styles.charts}>
+            <Panel label="Passengers by risk">
+              <PanelHeader title="Passengers by risk" hint="Everyone on a watched connection, right now." />
+              <DonutChart data={riskSlices} label="Passengers by risk" unit="passengers" totalLabel="Passengers" size={168} thickness={22} groupBelow={0} emptyLabel="No passengers yet" />
+            </Panel>
+            <Panel label="Time needed against time left">
+              <PanelHeader title="Time needed against time left" hint="One line per connection, tightest first. A line that falls means the transfer needs more minutes than it has." />
+              {slopes.length ? (
+                <SlopeChart data={slopes} label="Minutes needed against minutes left, by connection" startLabel="Needs" endLabel="Has" formatValue={(value) => `${value} min`} highlightKey={slopes[0]?.key ?? null} ranks={false} />
+              ) : (
+                <EmptyState icon={<Mascot pose="sleepy" size={40} />} title="Nothing scored yet" description="Lines appear once a connection has been scored." label="No scored connections" />
+              )}
+            </Panel>
+            <Panel label="Actions by state">
+              <PanelHeader title="Actions by state" hint="Suggested actions on the board." />
+              <DonutChart data={actionSlices} label="Actions by state" unit="actions" totalLabel="Actions" size={168} thickness={22} groupBelow={0} emptyLabel="No actions yet" />
+            </Panel>
           </div>
 
           <div className={styles.opsGrid}>

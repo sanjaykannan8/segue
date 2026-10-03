@@ -1,4 +1,6 @@
 """Passenger routes: notice, consent, trip, feed, and the rights the DPDP Act gives the person."""
+import json
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
@@ -9,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core import buffer as buf
 from ..core.breaker import BreakerOpen
-from ..core.bus import TOPIC_ITINERARY, notify
+from ..core.bus import TOPIC_ITINERARY, notify, redis
 from ..core.db import AssistanceNeed, Connection, ConnectionRisk, Consent, DataPrincipal, FeedItem, FlightInstance, Itinerary, PassengerPII, RightsRequest, now, uid
 from ..core.settings import get_settings
 from ..core.util import decrypt, encrypt
@@ -46,6 +48,13 @@ class Manual(BaseModel):
 class FlightInput(BaseModel):
     flight_iata: str = Field(min_length=3, max_length=8)
     manual: Manual | None = None
+    # Set both when the flight was picked from a departures list: the server then uses the row it already holds.
+    dep_airport: str | None = Field(None, min_length=3, max_length=4)
+    arr_airport: str | None = Field(None, min_length=3, max_length=4)
+
+
+class ClaimIn(BaseModel):
+    code: str = Field(min_length=6, max_length=12)
 
 
 class ItineraryIn(BaseModel):
@@ -188,10 +197,103 @@ async def _resolve(db: AsyncSession, item: FlightInput) -> FlightInstance:
         data = {"flight_iata": _code(item.flight_iata), "date": m.sched_dep.astimezone(timezone.utc).strftime("%Y-%m-%d"), "origin": _code(m.origin), "dest": _code(m.dest), "sched_dep": m.sched_dep, "est_dep": m.sched_dep, "sched_arr": m.sched_arr, "est_arr": m.sched_arr, "dep_terminal": m.dep_terminal, "arr_terminal": m.arr_terminal, "dep_gate": m.dep_gate, "arr_gate": m.arr_gate, "status": "scheduled"}
         flight, _ = await flights.upsert(db, data, "manual")
         return flight
+    if item.dep_airport or item.arr_airport:
+        # Picked from a list we already hold: no query spent.
+        held = await _departures(_code(item.dep_airport), _code(item.arr_airport) if item.arr_airport else None) if item.dep_airport else await _arrivals(_code(item.arr_airport))
+        for row in held:
+            if row["flight_iata"] == _code(item.flight_iata):
+                data = {**row, **{k: datetime.fromisoformat(row[k]) if row[k] else None for k in ("sched_dep", "est_dep", "sched_arr", "est_arr")}}
+                flight, _ = await flights.upsert(db, data, "airlabs")
+                return flight
     flight = await _lookup(db, item.flight_iata)
     if flight is None:
         raise HTTPException(404, f"No live data for {item.flight_iata}. Enter the details by hand.")
     return flight
+
+
+async def _provider_call(fn):
+    try:
+        return await fn()
+    except BudgetSpent:
+        raise HTTPException(503, "The flight data allowance is used up. Enter the flight details by hand.")
+    except RuntimeError as error:
+        raise HTTPException(503, str(error))
+    except Exception:
+        raise HTTPException(503, "Flight data is unavailable right now. Enter the flight details by hand.")
+
+
+async def _departures(airport: str, to: str | None = None) -> list[dict]:
+    """Departures for a route, cached for ten minutes so searching does not drain the query allowance."""
+    key = f"sched:{airport}:{to or '*'}"
+    cached = await redis().get(key)
+    if cached:
+        return json.loads(cached)
+    rows = await _provider_call(lambda: provider().schedules(airport, to))
+    for row in rows:
+        for name in ("sched_dep", "est_dep", "sched_arr", "est_arr"):
+            row[name] = row[name].isoformat() if row[name] else None
+    await redis().set(key, json.dumps(rows), ex=600)
+    return rows
+
+
+async def _arrivals(airport: str) -> list[dict]:
+    """Flights heading to an airport, cached for ten minutes."""
+    key = f"arr:{airport}"
+    cached = await redis().get(key)
+    if cached:
+        return json.loads(cached)
+    rows = await _provider_call(lambda: provider().arrivals(airport))
+    for row in rows:
+        for name in ("sched_dep", "est_dep", "sched_arr", "est_arr"):
+            row[name] = row[name].isoformat() if row[name] else None
+    await redis().set(key, json.dumps(rows), ex=600)
+    return rows
+
+
+@router.get("/flights/arrivals")
+async def arrivals(airport: str, principal_id: str = Depends(passenger)) -> dict:
+    """Flights flying to an airport and not yet landed, soonest landing first."""
+    code = _code(airport)
+    if not (3 <= len(code) <= 4 and code.isalnum()):
+        raise HTTPException(400, "Use the airport's three-letter code.")
+    held = await _arrivals(code)
+    landing = lambda r: datetime.fromisoformat(r["est_arr"] or r["sched_arr"])
+    rows = [r for r in held if r["status"] not in ("cancelled", "landed") and (r["est_arr"] or r["sched_arr"]) and landing(r) >= now()]
+    rows.sort(key=lambda r: r["est_arr"] or r["sched_arr"])
+    return {"flights": rows[:80], "truncated": len(held) >= 100, "window_hours": 10}
+
+
+@router.get("/airports/search")
+async def airport_search(q: str, principal_id: str = Depends(passenger)) -> list[dict]:
+    """City or airport name to airports. Cached for a week: airports do not move."""
+    query = q.strip().lower()
+    if len(query) < 3:
+        return []
+    key = f"suggest:{query}"
+    cached = await redis().get(key)
+    if cached:
+        return json.loads(cached)
+    found = await _provider_call(lambda: provider().suggest(query))
+    await redis().set(key, json.dumps(found), ex=7 * 24 * 3600)
+    return found
+
+
+@router.get("/flights/departures")
+async def departures(airport: str, to: str | None = None, after: datetime | None = None, principal_id: str = Depends(passenger)) -> dict:
+    """Flights from one airport to another over the next hours, soonest first, for picking a flight without its number."""
+    code, dest = _code(airport), _code(to) if to else None
+    for value in (code, dest):
+        if value is not None and not (3 <= len(value) <= 4 and value.isalnum()):
+            raise HTTPException(400, "Use the airport's three-letter code.")
+    if after is None:
+        earliest = now() - timedelta(minutes=30)
+    else:
+        earliest = after if after.tzinfo else after.replace(tzinfo=timezone.utc)
+    held = await _departures(code, dest)
+    rows = [r for r in held if r["status"] not in ("cancelled", "landed") and r["sched_dep"] and datetime.fromisoformat(r["est_dep"] or r["sched_dep"]) >= earliest]
+    rows.sort(key=lambda r: r["est_dep"] or r["sched_dep"])
+    # The provider caps a reply at 100 rows: a full reply means later flights may be missing.
+    return {"flights": rows[:80], "truncated": len(held) >= 100, "window_hours": 10}
 
 
 @router.post("/itineraries")
@@ -347,3 +449,38 @@ async def delete_me(request: Request, principal_id: str = Depends(passenger), db
     out = Response(status_code=204)
     await _erase(request, out, principal_id, db, "erasure")
     return out
+
+
+# ---- Open the trip on another device ----
+# The session is an anonymous cookie, so a second device has no way in. A short one-time code
+# moves it across: no account, no email, nothing new stored about the person.
+LINK_TTL_S = 600
+ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no 0/O, 1/I/L
+
+
+@router.post("/me/link")
+async def make_link(principal_id: str = Depends(passenger), db: AsyncSession = Depends(get_db)) -> dict:
+    code = "".join(secrets.choice(ALPHABET) for _ in range(8))
+    await redis().set(f"link:{code}", principal_id, ex=LINK_TTL_S)
+    await privacy.audit(db, principal_id, "passenger", "link:created", "one-time device code")
+    await db.commit()
+    return {"code": code, "expires_in": LINK_TTL_S}
+
+
+@router.post("/session/claim")
+async def claim(body: ClaimIn, request: Request, response: Response, db: AsyncSession = Depends(get_db)) -> dict:
+    # Slow down guessing: ten tries per address every ten minutes.
+    address = request.headers.get("x-forwarded-for", request.client.host if request.client else "?").split(",")[0].strip()
+    tries = await redis().incr(f"claim:{address}")
+    if tries == 1:
+        await redis().expire(f"claim:{address}", LINK_TTL_S)
+    if tries > 10:
+        raise HTTPException(429, "Too many tries. Wait ten minutes and ask for a new code.")
+    code = body.code.strip().upper().replace("-", "").replace(" ", "")
+    principal_id = await redis().getdel(f"link:{code}")  # single use
+    if not principal_id or await db.get(PassengerPII, principal_id) is None:
+        raise HTTPException(404, "That code is wrong or has expired. Ask for a new one on your first device.")
+    set_cookie(response, PAX_COOKIE, {"principal_id": principal_id})
+    await privacy.audit(db, principal_id, "passenger", "link:claimed", "session opened on another device")
+    await db.commit()
+    return await me_view(db, principal_id)

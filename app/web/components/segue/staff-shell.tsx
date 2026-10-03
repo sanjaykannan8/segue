@@ -3,20 +3,20 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { LogOut, Radio } from "lucide-react";
 import { Avatar } from "@/components/arc/avatar/avatar";
 import { Button } from "@/components/arc/button/button";
 import { Skeleton } from "@/components/arc/skeleton/skeleton";
 import { api, isStatus, useResource, type Role, type StaffUser } from "@/lib/api";
 import { ErrorState, LogoTile } from "./ui";
-import styles from "./staff-shell.module.css";
+import styles from "./shell.module.css";
 
-const PAGES: { href: string; label: string; roles: Role[]; dark?: boolean }[] = [
-  { href: "/ops", label: "Ops board", roles: ["ops", "admin"], dark: true },
+const PAGES: { href: string; label: string; roles: Role[] }[] = [
+  { href: "/ops", label: "Ops board", roles: ["ops", "admin"] },
   { href: "/crew", label: "Crew list", roles: ["crew", "admin"] },
   { href: "/ground", label: "Ground queue", roles: ["ground", "admin"] },
   { href: "/authority", label: "Fast-track", roles: ["authority", "admin"] },
-  { href: "/console", label: "Control panel", roles: ["admin"], dark: true },
+  { href: "/console", label: "Control panel", roles: ["admin"] },
 ];
 
 export const ROLE_HOME: Record<Role, string> = { ops: "/ops", crew: "/crew", ground: "/ground", authority: "/authority", admin: "/console" };
@@ -35,24 +35,12 @@ export function useStaff(): StaffUser {
   return user;
 }
 
-/** Arc themes hang off <html>, so dialogs and menus (which render in a portal) follow the page's theme. */
-function useDocumentTheme(dark: boolean) {
-  useEffect(() => {
-    const root = document.documentElement;
-    if (dark) root.dataset.theme = "dark";
-    else delete root.dataset.theme;
-    return () => { delete root.dataset.theme; };
-  }, [dark]);
-}
-
 export function StaffShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const auth = useResource(api.authMe);
   const [leaving, setLeaving] = useState(false);
   const page = PAGES.find((entry) => pathname === entry.href || pathname.startsWith(`${entry.href}/`));
-  const dark = page?.dark ?? false;
-  useDocumentTheme(dark);
 
   const user = auth.data;
   const signedOut = isStatus(auth.error, 401, 403);
@@ -71,9 +59,9 @@ export function StaffShell({ children }: { children: ReactNode }) {
   const links = user ? PAGES.filter((entry) => entry.roles.includes(user.role)) : [];
 
   return (
-    <div className={styles.page} data-theme={dark ? "dark" : undefined}>
+    <div className={styles.page}>
       <header className={styles.bar}>
-        <div className={styles.barInner}>
+        <div className={`${styles.barInner} ${styles.wide}`}>
           <Link href={user ? homeFor(user.role) : "/login"} className={styles.brand} aria-label="Segue home">
             <LogoTile size={36} />
           </Link>
@@ -96,7 +84,7 @@ export function StaffShell({ children }: { children: ReactNode }) {
           ) : null}
         </div>
       </header>
-      <main className={styles.main}>
+      <main className={`${styles.main} ${styles.wide}`}>
         {user && allowed ? (
           <StaffContext.Provider value={user}>{children}</StaffContext.Provider>
         ) : auth.loading || signedOut || user ? (
@@ -124,5 +112,5 @@ export function StaffHeading({ title, hint, aside }: { title: string; hint?: Rea
 
 /** Small "live" marker for pages that refresh from the staff stream. */
 export function LiveState({ state }: { state: "connecting" | "open" | "retrying" }) {
-  return <span className={styles.liveState} role="status">{state === "open" ? "Live" : state === "connecting" ? "Connecting…" : "Reconnecting…"}</span>;
+  return <span className={styles.liveState} role="status"><Radio width={14} height={14} aria-hidden="true" />{state === "open" ? "Live" : state === "connecting" ? "Connecting…" : "Reconnecting…"}</span>;
 }

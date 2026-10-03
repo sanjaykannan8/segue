@@ -21,8 +21,14 @@
 
 /* Ops */
 .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4); }
-.metric { position: relative; }
-.metricIcon { position: absolute; top: var(--space-6); right: var(--space-6); display: grid; width: 2rem; height: 2rem; place-items: center; border: 1px solid color-mix(in srgb, var(--risk) 30%, var(--border)); border-radius: var(--radius-pill); background: color-mix(in srgb, var(--risk) 12%, var(--surface)); color: var(--risk-ink); }
+.metric { position: relative; display: flex; min-width: 0; flex-direction: column; gap: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-panel); padding: var(--space-5); background: var(--surface); box-shadow: var(--shadow-resting); }
+/* The Arc metric card sits flat inside the tile, so the tile can also hold its trend. */
+.metric article { border: 0; border-radius: 0; padding: 0; background: none; box-shadow: none; }
+.metric article > div:first-child { margin-bottom: var(--space-3); }
+.metric article p { margin-top: var(--space-2); }
+.metricTrend { border-top: 1px solid var(--border-subtle); padding-top: var(--space-3); }
+.charts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr); align-items: stretch; gap: var(--space-4); }
+.metricIcon { position: absolute; top: var(--space-5); right: var(--space-5); display: grid; width: 2rem; height: 2rem; place-items: center; border: 1px solid color-mix(in srgb, var(--risk) 30%, var(--border)); border-radius: var(--radius-pill); background: color-mix(in srgb, var(--risk) 12%, var(--surface)); color: var(--risk-ink); }
 .opsGrid { display: grid; grid-template-columns: minmax(0, 1fr) 24rem; align-items: start; gap: var(--space-6); }
 .actions { display: flex; flex-direction: column; gap: var(--space-4); }
 .actionsTitle { font-size: var(--text-lg); }
@@ -58,9 +64,17 @@
 .headRow { display: flex; align-items: center; gap: var(--space-3); }
 
 @media (max-width: 64rem) {
-  .opsGrid, .consoleGrid { grid-template-columns: 1fr; }
+  .opsGrid, .consoleGrid, .charts { grid-template-columns: 1fr; }
   .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 30rem) {
   .formGrid { grid-template-columns: 1fr; }
 }
+
+/* Round 2 */
+.breakers { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: var(--space-4); }
+.breakers .breaker { border: 1px solid var(--border); border-radius: var(--radius-control); padding: var(--space-4); background: var(--surface-muted); }
+.breakers .breaker:first-child { border-top: 1px solid var(--border); padding-top: var(--space-4); }
+.breakers .breaker:last-child { padding-bottom: var(--space-4); }
+.chartBox { max-width: 40rem; margin-bottom: var(--space-5); }
+.tile { background: var(--surface-muted); }

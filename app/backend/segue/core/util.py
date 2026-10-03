@@ -31,7 +31,8 @@ def risk_cache_key(connection_id: str, version: str) -> str:
 
 def idempotency_key(connection_id: str, itinerary_id: str | None, decision_type: str, event_id: str) -> str:
     """The same event redelivered yields the same key, so no decision or alert is created twice."""
-    return f"{connection_id}:{itinerary_id or '-'}:{decision_type}:{event_id}"
+    # Hashed to a fixed 64 characters, so "<key>:<routing key>" always fits the outbox's message id column.
+    return hashlib.sha256(f"{connection_id}:{itinerary_id or '-'}:{decision_type}:{event_id}".encode()).hexdigest()
 
 
 def hash_password(password: str) -> str:

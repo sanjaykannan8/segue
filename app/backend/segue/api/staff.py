@@ -85,7 +85,8 @@ async def board(user: dict = staff("ops"), db: AsyncSession = Depends(get_db)) -
             labels[connection.id] = f"{inbound.flight_iata} → {outbound.flight_iata}"
     # What ops sees: anything waiting for a person, plus ops' own actions. Routine passenger messages stay out.
     query = select(Decision).where((Decision.gate != "auto") | (Decision.type.in_(("ops_action", "review")))).where(Decision.type != "message_template").order_by((Decision.status != "pending"), Decision.created_at.desc()).limit(60)
-    actions = [await action_view(db, d, labels) for d in (await db.execute(query)).scalars()]
+    # A decision with no payload belonged to a passenger whose data has been erased: nothing left to show or do.
+    actions = [await action_view(db, d, labels) for d in (await db.execute(query)).scalars() if (d.payload or {}).get("title")]
     connections.sort(key=lambda c: c["risk"]["buffer_min"] if c["risk"] else 9999)
     return {"counts": counts, "degraded": await Breaker(redis(), "model").is_open() or any(c["risk"] and c["risk"]["source"] == "rules" for c in connections), "connections": connections, "actions": actions}
 

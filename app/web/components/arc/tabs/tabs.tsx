@@ -124,6 +124,9 @@ export function TabsContent({ className, value, forceMount, children, ...props }
     if (from !== null && Math.abs(from - to) > 1 && !reduced) {
       if (to > from) node.style.overflow = "clip";
       controls = animate(node, { height: [from, to] }, { ...motionTokens.spring.smooth, onComplete: release });
+      // Segue: the animation can commit its final height after onComplete runs, which left the panel pinned at a fixed
+      // height so later content spilled out. Release again once it has fully finished, and on the next frame.
+      void controls.finished.then(() => { release(); requestAnimationFrame(release); }, () => {});
     }
     panelHeightRef.current = controls && from !== null ? from : to;
     const observer = new ResizeObserver(() => { panelHeightRef.current = node.offsetHeight; });

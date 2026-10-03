@@ -122,3 +122,26 @@ type AuthorityRequest = { id: string; name: string | null; inbound: string; outb
 | GET | `/admin/dlq` | | `{events: [{id, topic, error, payload, created_at}], queues: [{name, messages}]}` |
 | POST | `/admin/dlq/replay` | `{kind: "event", id}` or `{kind: "queue", name}` | `{replayed: number}` |
 | GET | `/admin/audit?limit=100` | | `[{at, actor, role, action, object}]` |
+
+## Flight search and moving to another device (passenger session unless noted)
+
+| Method | Path | Body / query | Returns |
+|---|---|---|---|
+| GET | `/airports/search?q=delhi` | q: city or airport name, 3+ characters | `Airport[]` (up to 8, most used first). Shorter queries return `[]`. Cached for a week |
+| GET | `/flights/departures?airport=DEL&to=DXB&after=<ISO>` | airport: departure IATA code; to: arrival IATA code (strongly recommended); after: optional earliest departure (default: 30 min ago) | `{flights: Departure[], truncated: boolean, window_hours: 10}`. Flights are soonest first, up to 80, cancelled and landed left out. The data covers only about the next 10 hours. Without `to`, a busy airport's reply is cut off (`truncated: true`) and mostly holds flights that already left, so always ask for a route. Cached for 10 minutes. 503 when flight data is unavailable |
+| GET | `/flights/arrivals?airport=DXB` | airport: arrival IATA code | `{flights: Departure[], truncated: boolean, window_hours: 10}`: flights flying to that airport that have not landed, soonest landing first. In practice these are flights in the air or about to leave, landing over the next few hours. Cached for 10 minutes. When a flight is picked from this list send `arr_airport` only (no `dep_airport`) in its FlightInput |
+| POST | `/me/link` | | `{code, expires_in}`: an 8-character one-time code, valid `expires_in` seconds (600) |
+| POST | `/session/claim` | `{code}` (no session needed) | Sets the session cookie and returns `/me`. 404 if the code is wrong, used or expired; 429 after 10 tries in 10 minutes |
+
+```ts
+type Airport = { iata: string; name: string; country: string | null };
+type Departure = {
+  flight_iata: string; operated_by: string | null;   // operated_by: the operating flight when this number is a codeshare
+  date: string; origin: string; dest: string;
+  sched_dep: string | null; est_dep: string | null; sched_arr: string | null; est_arr: string | null;
+  dep_terminal: string | null; dep_gate: string | null; arr_terminal: string | null; arr_gate: string | null;
+  status: string;
+};
+```
+
+`FlightInput` gains `dep_airport?: string` and `arr_airport?: string`. Send both (the `airport` and `to` used for the list) when the flight was picked from a `/flights/departures` list: the server then uses the row it already holds and spends no flight-data query. Each uncached airport search or departures list costs one query from a small allowance, so debounce typing and never refetch on every keystroke.

@@ -41,6 +41,11 @@ def test_rule_levels():
 def test_keys_and_crypto():
     assert risk_cache_key("c1", "3.1") != risk_cache_key("c1", "4.1")
     assert idempotency_key("c", "i", "t", "e") == idempotency_key("c", "i", "t", "e")
+    assert idempotency_key("c", "i", "t", "e1") != idempotency_key("c", "i", "t", "e2")
+    # Postgres enforces the 128-character column; the longest routing key must still fit.
+    from segue.core.bus import QUEUES
+    key = idempotency_key("a" * 32, "b" * 32, "request_fast_track", "c" * 32)
+    assert all(len(f"{key}:{routing_key}") <= 128 for routing_key in QUEUES)
     token = encrypt("Priya Sharma")
     assert "Priya" not in token and decrypt(token) == "Priya Sharma"
     assert encrypt(None) is None and decrypt(None) is None

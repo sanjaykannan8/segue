@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/arc/button/button";
+import { Alert } from "@/components/arc/alert/alert";
 import { Input } from "@/components/arc/input/input";
+import { PasswordField } from "@/components/arc/password-field/password-field";
 import { homeFor } from "@/components/segue/staff-shell";
-import { FormError, LogoTile, Mascot } from "@/components/segue/ui";
-import { api, isStatus } from "@/lib/api";
+import { LogoTile, Mascot } from "@/components/segue/ui";
+import { api, errorMessage, isStatus } from "@/lib/api";
 import styles from "./login.module.css";
 
 export default function LoginPage() {
@@ -42,16 +45,17 @@ export default function LoginPage() {
       <div className={styles.card}>
         <div className={styles.head}>
           <LogoTile size={48} />
-          <Mascot pose="wink" size={56} />
+          <Mascot pose="wink" size={64} />
         </div>
-        <h1 className={styles.title}>Staff sign-in</h1>
-        <p className={styles.intro}>For ops, crew, ground and airport teams.</p>
+        <h1 className={styles.title}>Staff sign in</h1>
+        <p className={styles.intro}>For ops, crew, ground and airport teams. Use the account your admin gave you.</p>
         <form className={styles.form} onSubmit={submit} noValidate>
-          <Input label="Email" type="email" name="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} />
-          <Input label="Password" type="password" name="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />
-          <FormError error={error} />
+          <Input label="Email" type="email" name="email" inputMode="email" autoComplete="username" autoFocus value={email} onChange={(event) => setEmail(event.target.value)} />
+          <PasswordField label="Password" name="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />
+          {error ? <Alert tone="info" title="We couldn't sign you in">{errorMessage(error)}</Alert> : null}
           <Button type="submit" size="lg" loading={busy}>Sign in</Button>
         </form>
+        <p className={styles.foot}>Travelling? <Link href="/">Check your connection</Link> · <Link href="/privacy-policy">Privacy policy</Link></p>
       </div>
     </main>
   );

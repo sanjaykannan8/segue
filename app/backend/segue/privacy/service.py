@@ -65,6 +65,8 @@ async def erase_principal(db: AsyncSession, principal_id: str, actor: str, reaso
     if ids:
         await db.execute(delete(AssistanceNeed).where(AssistanceNeed.itinerary_id.in_(ids)))
     await db.execute(delete(FeedItem).where(FeedItem.principal_id == principal_id))
+    # Anything still waiting for a person can no longer be acted on: close it, then strip the identifiers.
+    await db.execute(update(Decision).where(Decision.principal_id == principal_id, Decision.status == "pending").values(status="expired"))
     await db.execute(update(Decision).where(Decision.principal_id == principal_id).values(principal_id=None, itinerary_id=None, payload={}))
     await db.execute(delete(Itinerary).where(Itinerary.principal_id == principal_id))
     await db.execute(delete(PassengerPII).where(PassengerPII.principal_id == principal_id))

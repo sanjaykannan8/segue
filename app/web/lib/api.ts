@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/+$/, "");
+export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "/api").replace(/\/+$/, "");
 
 /* ───────────── Shared shapes (copied from the contract) ───────────── */
 
@@ -76,7 +76,19 @@ export type ManualFlight = {
   origin: string; dest: string; sched_dep: string; sched_arr: string;
   dep_terminal?: string; arr_terminal?: string; dep_gate?: string; arr_gate?: string;
 };
-export type FlightInput = { flight_iata: string; manual?: ManualFlight };
+/** dep_airport and arr_airport: the `airport` and `to` of the route list the flight was picked from. */
+export type FlightInput = { flight_iata: string; manual?: ManualFlight; dep_airport?: string; arr_airport?: string };
+
+export type Airport = { iata: string; name: string; country: string | null };
+export type Departure = {
+  flight_iata: string; operated_by: string | null;
+  date: string; origin: string; dest: string;
+  sched_dep: string | null; est_dep: string | null; sched_arr: string | null; est_arr: string | null;
+  dep_terminal: string | null; dep_gate: string | null; arr_terminal: string | null; arr_gate: string | null;
+  status: string;
+};
+export type DepartureList = { flights: Departure[]; truncated: boolean; window_hours: number };
+export type DeviceLink = { code: string; expires_in: number };
 export type ItineraryBody = { inbound: FlightInput; outbound: FlightInput; seat?: string; assistance?: AssistanceType };
 
 export type RequestTicket = { id: string; status: string };
@@ -219,6 +231,11 @@ export const api = {
   nominee: (name: string, contact: string) => post<RequestTicket>("/me/nominee", { name, contact }),
   myRequests: () => get<MyRequest[]>("/me/requests"),
   deleteMe: () => request<void>("DELETE", "/me"),
+  searchAirports: (q: string) => get<Airport[]>(`/airports/search?q=${seg(q)}`),
+  departures: (airport: string, to: string, after?: string | null) => get<DepartureList>(`/flights/departures?airport=${seg(airport)}&to=${seg(to)}${after ? `&after=${seg(after)}` : ""}`),
+  arrivals: (airport: string) => get<DepartureList>(`/flights/arrivals?airport=${seg(airport)}`),
+  createLink: () => post<DeviceLink>("/me/link"),
+  claimSession: (code: string) => post<Me>("/session/claim", { code }),
 
   // Staff
   login: (email: string, password: string) => post<StaffUser>("/auth/login", { email, password }),

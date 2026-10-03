@@ -1,4 +1,5 @@
 /* Segue theme: loaded after Arc's foundation.css and re-tints its tokens.
+   One light theme for every screen, passenger and staff. There is no dark theme.
    Palette: Deep Ocean #06283D, Ocean Blue #1363DF, Clear Sky #47B5FF, Morning Mist #DFF6FF.
    Status colors are used for connection risk only, always with an icon and a label. */
 
@@ -49,46 +50,15 @@
   --arc-gradient-foreground: var(--deep-ocean);
 
   --content-passenger: 30rem;
+  --content-reading: 45rem;
   --content-staff: 82rem;
-}
 
-/* Ops dashboard and control panel: Arc dark, on Deep Ocean surfaces.
-   Set on <html> (for dialogs and menus in portals) and on the page wrapper (so the first paint is already dark). */
-:root[data-theme="dark"],
-[data-theme="dark"] {
-  color-scheme: dark;
-  --background: #06283d;
-  --surface: #0a3350;
-  --surface-raised: #0e3b5c;
-  --surface-muted: #0e3b5c;
-  --foreground: #eaf6ff;
-  --text-secondary: #a6c3d6;
-  --text-muted: #8fb0c4;
-  --border: #174b70;
-  --border-subtle: #113f60;
-  --border-strong: #2a6690;
-
-  --accent: #7fb8ff;
-  --accent-strong: #b5d6ff;
-  --accent-subtle: rgb(71 181 255 / .16);
-  --accent-foreground: #06283d;
-  --focus-ring: var(--clear-sky);
-
-  --control-on: var(--clear-sky);
-  --control-glyph: #06283d;
-  --control-track: #174b70;
-  --control-track-hover: #1f5a85;
-  --control-thumb: #eaf6ff;
-  --control-thumb-on: #06283d;
-  --control-fill: var(--clear-sky);
-
-  --success: #53dca6;
-  --warning: #ffcb62;
-  --danger: #ff9386;
-
-  --shadow-resting: 0 1px 2px rgb(0 0 0 / .18);
-  --shadow-raised: 0 8px 22px rgb(0 0 0 / .22);
-  --shadow-floating: 0 22px 55px rgb(0 0 0 / .34);
+  /* Chart colors that are not risk: brand blues only. */
+  --chart-1: var(--ocean-blue);
+  --chart-2: var(--clear-sky);
+  --chart-3: var(--deep-ocean);
+  --chart-4: #9dbccd;
+  --chart-5: #d3e6f0;
 }
 
 /* Connection risk. --risk is the status color, --risk-ink is the text-safe value. */
@@ -97,10 +67,6 @@
 [data-risk="at_risk"] { --risk: #f48120; --risk-ink: #aa4700; }
 [data-risk="lost"] { --risk: #f15f55; --risk-ink: #b92c27; }
 [data-risk="unknown"] { --risk: var(--text-muted); --risk-ink: var(--text-secondary); }
-[data-theme="dark"] [data-risk="safe"] { --risk: #0db879; --risk-ink: #53dca6; }
-[data-theme="dark"] [data-risk="tight"] { --risk: #f3ad20; --risk-ink: #ffcb62; }
-[data-theme="dark"] [data-risk="at_risk"] { --risk: #f48120; --risk-ink: #ffad5e; }
-[data-theme="dark"] [data-risk="lost"] { --risk: #f15f55; --risk-ink: #ff9386; }
 
 /* Arc Badge and Gauge take the risk colors through their own variables. */
 span[data-risk] {
@@ -110,6 +76,11 @@ span[data-risk] {
   --badge-border: color-mix(in srgb, var(--risk) 25%, var(--border));
 }
 [data-risk] figure { --gauge-color: var(--risk); --gauge-text: var(--risk-ink); }
+/* A sparkline inside a risk tile draws in that risk color. */
+[data-risk] [data-risk-accent] { --accent: var(--risk); --accent-strong: var(--risk-ink); }
+
+/* Numbers line up in columns everywhere. */
+time, td, dd, [role="meter"], [role="progressbar"] { font-variant-numeric: tabular-nums; }
 
 /* Keyboard users get a visible focus mark; pointer users do not. */
 :root :is(a, button, input, select, textarea, [role="tab"], [role="radio"], [role="switch"], [role="checkbox"], [role="combobox"], [tabindex]):focus-visible {
