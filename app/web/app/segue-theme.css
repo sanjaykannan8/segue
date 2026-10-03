@@ -1,0 +1,122 @@
+/* Segue theme: loaded after Arc's foundation.css and re-tints its tokens.
+   Palette: Deep Ocean #06283D, Ocean Blue #1363DF, Clear Sky #47B5FF, Morning Mist #DFF6FF.
+   Status colors are used for connection risk only, always with an icon and a label. */
+
+:root {
+  --deep-ocean: #06283d;
+  --ocean-blue: #1363df;
+  --clear-sky: #47b5ff;
+  --morning-mist: #dff6ff;
+
+  --font-display: var(--font-instrument), "Instrument Sans", system-ui, sans-serif;
+  --font-body: var(--font-instrument), "Instrument Sans", system-ui, sans-serif;
+
+  --background: var(--morning-mist);
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-muted: #f1f9fd;
+  --foreground: var(--deep-ocean);
+  --text-secondary: #3d5a6c;
+  --text-muted: #5b7485;
+  --border: #d3e6f0;
+  --border-subtle: #e6f1f7;
+  --border-strong: #9dbccd;
+
+  --accent: var(--ocean-blue);
+  --accent-strong: #0b4bb0;
+  --accent-subtle: rgb(19 99 223 / .1);
+  --accent-foreground: #ffffff;
+  --focus-ring: var(--ocean-blue);
+
+  --control-on: var(--ocean-blue);
+  --control-glyph: #ffffff;
+  --control-track: #c9dde8;
+  --control-track-hover: #b8d0de;
+  --control-thumb-on: #ffffff;
+  --control-fill: var(--ocean-blue);
+
+  /* Arc's semantic tones carry text, so they take the status inks. */
+  --success: #087c54;
+  --warning: #9c6300;
+  --danger: #b92c27;
+
+  --shadow-resting: 0 1px 2px rgb(6 40 61 / .05);
+  --shadow-raised: 0 6px 18px rgb(6 40 61 / .08), 0 1px 3px rgb(6 40 61 / .04);
+  --shadow-floating: 0 20px 48px rgb(6 40 61 / .14), 0 3px 10px rgb(6 40 61 / .06);
+
+  --arc-gradient-from: #9fb5d7;
+  --arc-gradient-to: #46b5fd;
+  --arc-gradient-foreground: var(--deep-ocean);
+
+  --content-passenger: 30rem;
+  --content-staff: 82rem;
+}
+
+/* Ops dashboard and control panel: Arc dark, on Deep Ocean surfaces.
+   Set on <html> (for dialogs and menus in portals) and on the page wrapper (so the first paint is already dark). */
+:root[data-theme="dark"],
+[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #06283d;
+  --surface: #0a3350;
+  --surface-raised: #0e3b5c;
+  --surface-muted: #0e3b5c;
+  --foreground: #eaf6ff;
+  --text-secondary: #a6c3d6;
+  --text-muted: #8fb0c4;
+  --border: #174b70;
+  --border-subtle: #113f60;
+  --border-strong: #2a6690;
+
+  --accent: #7fb8ff;
+  --accent-strong: #b5d6ff;
+  --accent-subtle: rgb(71 181 255 / .16);
+  --accent-foreground: #06283d;
+  --focus-ring: var(--clear-sky);
+
+  --control-on: var(--clear-sky);
+  --control-glyph: #06283d;
+  --control-track: #174b70;
+  --control-track-hover: #1f5a85;
+  --control-thumb: #eaf6ff;
+  --control-thumb-on: #06283d;
+  --control-fill: var(--clear-sky);
+
+  --success: #53dca6;
+  --warning: #ffcb62;
+  --danger: #ff9386;
+
+  --shadow-resting: 0 1px 2px rgb(0 0 0 / .18);
+  --shadow-raised: 0 8px 22px rgb(0 0 0 / .22);
+  --shadow-floating: 0 22px 55px rgb(0 0 0 / .34);
+}
+
+/* Connection risk. --risk is the status color, --risk-ink is the text-safe value. */
+[data-risk="safe"] { --risk: #0db879; --risk-ink: #087c54; }
+[data-risk="tight"] { --risk: #f3ad20; --risk-ink: #9c6300; }
+[data-risk="at_risk"] { --risk: #f48120; --risk-ink: #aa4700; }
+[data-risk="lost"] { --risk: #f15f55; --risk-ink: #b92c27; }
+[data-risk="unknown"] { --risk: var(--text-muted); --risk-ink: var(--text-secondary); }
+[data-theme="dark"] [data-risk="safe"] { --risk: #0db879; --risk-ink: #53dca6; }
+[data-theme="dark"] [data-risk="tight"] { --risk: #f3ad20; --risk-ink: #ffcb62; }
+[data-theme="dark"] [data-risk="at_risk"] { --risk: #f48120; --risk-ink: #ffad5e; }
+[data-theme="dark"] [data-risk="lost"] { --risk: #f15f55; --risk-ink: #ff9386; }
+
+/* Arc Badge and Gauge take the risk colors through their own variables. */
+span[data-risk] {
+  --badge-color: var(--risk);
+  --badge-foreground: var(--risk-ink);
+  --badge-background: color-mix(in srgb, var(--risk) 10%, var(--surface));
+  --badge-border: color-mix(in srgb, var(--risk) 25%, var(--border));
+}
+[data-risk] figure { --gauge-color: var(--risk); --gauge-text: var(--risk-ink); }
+
+/* Keyboard users get a visible focus mark; pointer users do not. */
+:root :is(a, button, input, select, textarea, [role="tab"], [role="radio"], [role="switch"], [role="checkbox"], [role="combobox"], [tabindex]):focus-visible {
+  outline: 2px solid var(--focus-ring) !important;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; }
+}

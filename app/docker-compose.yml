@@ -1,0 +1,96 @@
+# Segue: the whole system in one file.  Set up once:  python scripts/init_env.py   then:  docker compose up --build
+x-backend: &backend
+  build: ./backend
+  env_file: .env
+  volumes:
+    - ./config/airports:/app/config/airports:ro
+  restart: unless-stopped
+  depends_on:
+    migrate: { condition: service_completed_successfully }
+    redis: { condition: service_healthy }
+    redpanda: { condition: service_healthy }
+    rabbitmq: { condition: service_healthy }
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: segue
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: segue
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U segue"], interval: 5s, timeout: 3s, retries: 20 }
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redisdata:/data]
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 5s, timeout: 3s, retries: 20 }
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --memory=512M
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:9092
+    volumes: [redpandadata:/var/lib/redpanda/data]
+    healthcheck: { test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"], interval: 5s, timeout: 5s, retries: 30 }
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: segue
+      RABBITMQ_DEFAULT_PASS: ${RABBIT_PASSWORD}
+    ports: ["127.0.0.1:15672:15672"]   # management UI, local machine only
+    volumes: [rabbitdata:/var/lib/rabbitmq]
+    healthcheck: { test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"], interval: 10s, timeout: 5s, retries: 20 }
+
+  migrate:
+    build: ./backend
+    env_file: .env
+    command: ["python", "-m", "segue.core.migrate"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    <<: *backend
+    command: ["uvicorn", "segue.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports: ["8000:8000"]
+
+  engine:
+    <<: *backend
+    command: ["python", "-m", "segue.engine.main"]
+
+  relay:
+    <<: *backend
+    command: ["python", "-m", "segue.relay.main"]
+
+  consumers:
+    <<: *backend
+    command: ["python", "-m", "segue.consumers.main"]
+
+  poller:
+    <<: *backend
+    command: ["python", "-m", "segue.poller.main"]
+
+  privacy:
+    <<: *backend
+    command: ["python", "-m", "segue.privacy.main"]
+
+  web:
+    build:
+      context: ./web
+      args: { NEXT_PUBLIC_API_URL: "http://localhost:8000" }
+    ports: ["3000:3000"]
+    depends_on: [api]
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  redpandadata:
+  rabbitdata:

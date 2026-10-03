@@ -1,0 +1,44 @@
+# Solution and pitch docs (kept local, not in the repo)
+/Segue_Solution.md
+/Segue_Technical_Solution.md
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+.venv/
+venv/
+
+# Build output and caches
+.next/
+*.tsbuildinfo
+next-env.d.ts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+
+# Rendered films and review frames (~300 MB, reproducible from videos/src)
+/videos/out/
+
+# Large media anywhere else
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.zip
+
+# Editor and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
