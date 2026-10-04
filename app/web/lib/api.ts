@@ -6,13 +6,13 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "/api").replace(/\/+$/, "");
+const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "/api").replace(/\/+$/, "");
 
 /* ───────────── Shared shapes (copied from the contract) ───────────── */
 
 export type RiskLevel = "safe" | "tight" | "at_risk" | "lost";
 export type Purpose = "tracking" | "notifications" | "assistance" | "authority_share";
-export type Language = "en" | "hi";
+export type Language = "en" | "ar" | "hi" | "ta";
 export type AssistanceType = "none" | "wheelchair" | "buggy" | "escort" | "step_free_route";
 
 export type Flight = {
@@ -60,18 +60,18 @@ export type FeedItem = { id: string; template: string; title: string; body: stri
 
 export type NoticePurpose = { id: Purpose; title: string; description: string; required: boolean };
 export type Notice = {
-  version: string; lang: string; title: string; intro: string;
+  version: string; lang: string; dir?: "rtl" | "ltr"; title: string; intro: string;
   sections: { heading: string; body: string }[];
   purposes: NoticePurpose[];
   retention_hours: number; grievance_contact: string;
 };
 
-export type ConsentBody = { notice_version: string; purposes: Purpose[]; language: Language; adult: true; name?: string; phone?: string };
+export type ConsentBody = { notice_version: string; purposes: Purpose[]; language: Language; adult: true; name?: string; phone?: string; email?: string };
 export type ConsentResult = { principal_id: string; purposes: Purpose[] };
 
 export type ConsentRecord = { purpose: Purpose; granted_at: string; withdrawn_at: string | null };
 export type Me = {
-  principal_id: string; language: string; name: string | null; phone: string | null;
+  principal_id: string; language: string; name: string | null; phone: string | null; email?: string | null; email_verified?: boolean;
   consents: ConsentRecord[]; has_itinerary: boolean;
 };
 
@@ -127,14 +127,13 @@ export type OpsBoard = {
   actions: OpsAction[];
 };
 
-export type CrewItem = { rank: number; seat: string | null; onward: string; onward_dest: string; buffer_min: number; level: string; assistance: string | null; booking?: Booking };
+export type CrewItem = { rank: number; seat: string | null; name?: string | null; onward: string; onward_dest: string; buffer_min: number; level: string; assistance: string | null; booking?: Booking };
 export type CrewFlight = { flight: Flight; items: CrewItem[] };
-export type GroundJob = { id: string; kind: string; seat: string | null; from_gate: string | null; to_gate: string | null; inbound: string; outbound: string; buffer_min: number; priority: number; status: "open" | "done"; created_at: string };
+export type GroundJob = { id: string; kind: string; assistance?: string | null; seat: string | null; name?: string | null; from_gate: string | null; to_gate: string | null; inbound: string; outbound: string; buffer_min: number; priority: number; status: "open" | "done"; created_at: string };
 export type AuthorityRequest = { id: string; name: string | null; inbound: string; outbound: string; airport: string; deadline: string | null; level: string; created_at: string };
 
 /* ───────────── Control panel ───────────── */
 
-export type BreakerName = "model" | "airlabs" | "rabbit";
 export type Breaker = { name: string; state: "closed" | "open" | "half_open"; failures: number; forced: string | null };
 export type AdminHealth = {
   services: Record<string, { ok: boolean; detail: string }>;
@@ -256,7 +255,7 @@ export const api = {
   myConnection: () => get<ConnectionView>("/me/connection"),
   myFeed: () => get<FeedItem[]>("/me/feed"),
   exportMyData: () => get<unknown>("/me/data"),
-  updateMyData: (body: { name?: string; phone?: string; language?: Language }) => request<Me>("PATCH", "/me/data", body),
+  updateMyData: (body: { name?: string; phone?: string; email?: string; language?: Language }) => request<Me>("PATCH", "/me/data", body),
   withdrawConsent: (purpose: Purpose) => post<Me>("/me/consent/withdraw", { purpose }),
   grantConsent: (purpose: Purpose) => post<Me>("/me/consent/grant", { purpose }),
   grievance: (message: string) => post<RequestTicket>("/me/grievance", { message }),
@@ -268,10 +267,14 @@ export const api = {
   arrivals: (airport: string) => get<DepartureList>(`/flights/arrivals?airport=${seg(airport)}`),
   createLink: () => post<DeviceLink>("/me/link"),
   claimSession: (code: string) => post<Me>("/session/claim", { code }),
+  verifyEmail: (code: string) => post<Me>("/me/email/verify", { code }),
+  resendEmailCode: () => post<{ sent: boolean }>("/me/email/resend"),
 
   // Staff
   login: (email: string, password: string) => post<StaffUser>("/auth/login", { email, password }),
   logout: () => post<void>("/auth/logout"),
+  logoutEverywhere: () => post<void>("/auth/logout-all"),
+  changePassword: (current: string, next: string) => post<{ ok: boolean }>("/auth/password", { current, new: next }),
   authMe: () => get<StaffUser>("/auth/me"),
   opsBoard: () => get<OpsBoard>("/ops/board"),
   approveDecision: (id: string) => post<OpsAction>(`/ops/decisions/${seg(id)}/approve`),

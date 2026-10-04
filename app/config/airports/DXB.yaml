@@ -1,17 +1,49 @@
-# Dubai International. Minutes are planning values for the prototype, not measured figures:
-# replace them with the airport's own numbers when you have them.
-gate_close_min: 20
-deplane_min: 8
-deplane_per_row_s: 12
-queue_min: 6
-walk_same_terminal_min: 12
-walk_other_terminal_min: 25
-walk:
-  "3>1": 30
-  "1>3": 30
-  "3>3": 12
-assistance_factor:
+# Dubai International (DXB). Planning values for the transfer-time arithmetic.
+#
+# Where each number comes from is in docs/dxb-facts.md, with source links.
+# `sourced: true` means an airline or the airport published it; `sourced: false` is our estimate
+# and should be replaced with the airport's own figure. Of the values here, 4 are sourced
+# (the three 30-minute Terminal 3 concourse transfers and the 20-minute gate close) and the rest are estimates.
+
+gate_close_min: 20        # sourced: Emirates gates close 20 minutes before departure
+deplane_min: 8            # estimate: a mid-cabin passenger leaving the aircraft
+deplane_per_row_s: 12     # estimate: extra seconds per seat row behind row 20
+queue_min: 10             # estimate: transfer security, typical. The official figure is airport-wide, not transfer-specific
+self_transfer_extra_min: 60   # estimate: separate tickets mean immigration, bag reclaim and check-in again. Emirates advises 3 hours for such connections
+
+assistance_factor:        # estimates: multiplier on the transfer time
   wheelchair: 1.5
   buggy: 0.8
   escort: 1.0
   step_free_route: 1.3
+
+# Gate letter -> concourse. Dubai Airports calls them "A gates", "B gates" and so on.
+concourses:
+  A: { terminal: "3", name: "A gates", gates: "A1 to A24" }
+  B: { terminal: "3", name: "B gates", gates: "B1 to B32" }
+  C: { terminal: "3", name: "C gates", gates: "C1 to C50" }
+  D: { terminal: "1", name: "D gates", gates: "D1 to D32" }
+  F: { terminal: "2", name: "F gates", gates: "F1 to F12" }
+
+# When a flight has a terminal but no gate yet: a terminal with one concourse resolves to it.
+terminal_concourse: { "1": D, "2": F }
+# Terminal 3 with no gate known on one side: assume a different concourse (the sourced 30 minutes).
+unknown_min: 30
+
+# Arrival gate to departure gate, in minutes, same in both directions.
+transfer:
+  A-A: { min: 10, how: "Walk within the A gates", sourced: false }
+  B-B: { min: 10, how: "Walk within the B gates", sourced: false }
+  C-C: { min: 12, how: "Walk within the C gates", sourced: false }
+  D-D: { min: 10, how: "Walk within the D gates", sourced: false }
+  F-F: { min: 5,  how: "Walk within Terminal 2", sourced: false }
+  A-B: { min: 30, how: "Airport train between the A and B gates", sourced: true }
+  A-C: { min: 30, how: "Airport train or bus between the A and C gates", sourced: true }
+  B-C: { min: 30, how: "Walk between the B and C gates", sourced: true }
+  A-D: { min: 45, how: "Train to the B gates, then shuttle bus to the D gates", sourced: false }
+  B-D: { min: 35, how: "Shuttle bus from connections desk K to the D gates", sourced: false }
+  C-D: { min: 40, how: "Walk to connections desk K, then shuttle bus to the D gates", sourced: false }
+  A-F: { min: 60, how: "Shuttle bus from area A6 to Terminal 2", sourced: false }
+  B-F: { min: 60, how: "Shuttle bus from connections desk K to Terminal 2", sourced: false }
+  C-F: { min: 60, how: "Shuttle bus from connections desk E to Terminal 2", sourced: false }
+  D-F: { min: 50, how: "Train to Terminal 1, then shuttle bus to Terminal 2", sourced: false }

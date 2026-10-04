@@ -19,7 +19,7 @@ export function StoryCard({ story }: { story: string[] }) {
     <Panel label="What just happened">
       <PanelHeader title="What just happened" />
       {story.length ? (
-        <ol className={styles.story}>
+        <ol className={styles.story} aria-live="polite">
           {/* A sentence that is new to the list fades in once as it mounts. */}
           {story.map((sentence, index) => <li key={`${index}:${sentence}`}><span>{sentence}</span></li>)}
         </ol>

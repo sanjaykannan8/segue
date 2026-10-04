@@ -1,39 +1,32 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LogOut, Radio } from "lucide-react";
 import { Avatar } from "@/components/arc/avatar/avatar";
 import { Button } from "@/components/arc/button/button";
 import { Skeleton } from "@/components/arc/skeleton/skeleton";
-import { api, isStatus, useResource, type Role, type StaffUser } from "@/lib/api";
+import { api, isStatus, useResource, type Role } from "@/lib/api";
+import { PageTitle } from "@/lib/i18n";
 import { ErrorState, LogoTile } from "./ui";
 import styles from "./shell.module.css";
 
-const PAGES: { href: string; label: string; roles: Role[] }[] = [
-  { href: "/ops", label: "Ops board", roles: ["ops", "admin"] },
-  { href: "/crew", label: "Crew list", roles: ["crew", "admin"] },
-  { href: "/ground", label: "Ground queue", roles: ["ground", "admin"] },
-  { href: "/authority", label: "Fast-track", roles: ["authority", "admin"] },
-  { href: "/demo", label: "Demo", roles: ["admin"] },
-  { href: "/console", label: "Control panel", roles: ["admin"] },
+const PAGES: { href: string; label: string; title: string; roles: Role[] }[] = [
+  { href: "/ops", label: "Ops board", title: "Ops controller", roles: ["ops", "admin"] },
+  { href: "/crew", label: "Crew list", title: "Cabin crew", roles: ["crew", "admin"] },
+  { href: "/ground", label: "Ground queue", title: "Ground handler", roles: ["ground", "admin"] },
+  { href: "/authority", label: "Fast-track", title: "Airport authority", roles: ["authority", "admin"] },
+  { href: "/demo", label: "Demo", title: "Live demo", roles: ["admin"] },
+  { href: "/console", label: "Control panel", title: "Control panel", roles: ["admin"] },
+  { href: "/account", label: "Account", title: "Your account", roles: ["ops", "crew", "ground", "authority", "admin"] },
 ];
 
-export const ROLE_HOME: Record<Role, string> = { ops: "/ops", crew: "/crew", ground: "/ground", authority: "/authority", admin: "/console" };
+const ROLE_HOME: Record<Role, string> = { ops: "/ops", crew: "/crew", ground: "/ground", authority: "/authority", admin: "/console" };
 const ROLE_LABEL: Record<Role, string> = { ops: "Ops controller", crew: "Cabin crew", ground: "Ground handler", authority: "Airport authority", admin: "Admin" };
 
 export function homeFor(role: string): string {
   return ROLE_HOME[role as Role] ?? "/login";
-}
-
-const StaffContext = createContext<StaffUser | null>(null);
-
-/** The signed-in staff member. Only used under the staff layout, which guards it. */
-export function useStaff(): StaffUser {
-  const user = useContext(StaffContext);
-  if (!user) throw new Error("useStaff must be used inside the staff layout");
-  return user;
 }
 
 export function StaffShell({ children }: { children: ReactNode }) {
@@ -61,10 +54,12 @@ export function StaffShell({ children }: { children: ReactNode }) {
 
   return (
     <div className={styles.page}>
+      <PageTitle title={page?.title ?? "Staff"} />
+      <a href="#main" className={styles.skip}>Skip to content</a>
       <header className={styles.bar}>
         <div className={`${styles.barInner} ${styles.wide}`}>
           <Link href={user ? homeFor(user.role) : "/login"} className={styles.brand} aria-label="Segue home">
-            <LogoTile size={36} />
+            <LogoTile size={36} decorative />
           </Link>
           <nav className={styles.nav} aria-label="Staff pages">
             {links.map((entry) => (
@@ -85,9 +80,9 @@ export function StaffShell({ children }: { children: ReactNode }) {
           ) : null}
         </div>
       </header>
-      <main className={`${styles.main} ${styles.wide}`}>
+      <main id="main" tabIndex={-1} className={`${styles.main} ${styles.wide}`}>
         {user && allowed ? (
-          <StaffContext.Provider value={user}>{children}</StaffContext.Provider>
+          children
         ) : auth.loading || signedOut || user ? (
           <div className={styles.wait}><Skeleton label="Checking your sign-in" lines={4} /></div>
         ) : (

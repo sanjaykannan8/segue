@@ -1,7 +1,7 @@
 .block { display: flex; flex-direction: column; gap: var(--space-3); }
 .question { font-size: var(--text-sm); font-weight: 600; }
 .group { display: grid; gap: var(--space-3); }
-.card { display: flex; min-height: 3.5rem; align-items: flex-start; gap: var(--space-3); border: 1.5px solid var(--border); border-radius: var(--radius-control); padding: var(--space-4); background: var(--surface); color: var(--foreground); text-align: left; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard); }
+.card { display: flex; min-height: 3.5rem; align-items: flex-start; gap: var(--space-3); border: 1.5px solid var(--border); border-radius: var(--radius-control); padding: var(--space-4); background: var(--surface); color: var(--foreground); text-align: start; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard); }
 .card:hover { border-color: var(--border-strong); }
 .card[aria-checked="true"] { border-color: var(--accent); background: var(--accent-subtle); }
 .mark { display: grid; width: 1.25rem; height: 1.25rem; flex: 0 0 auto; place-items: center; margin-top: 1px; border: 1.5px solid var(--border-strong); border-radius: var(--radius-pill); background: var(--surface); color: var(--control-glyph); }

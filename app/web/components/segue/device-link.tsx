@@ -6,6 +6,7 @@ import { Button } from "@/components/arc/button/button";
 import { Dialog, DialogContent } from "@/components/arc/dialog/dialog";
 import { Skeleton } from "@/components/arc/skeleton/skeleton";
 import { api, type DeviceLink } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import { useToast } from "./toasts";
 import { ErrorState } from "./ui";
 import styles from "@/app/(passenger)/passenger.module.css";
@@ -27,6 +28,7 @@ async function copyText(text: string): Promise<boolean> {
 
 /** A one-time code that opens this trip on a second device. */
 export function DeviceLinkButton({ variant = "secondary", className }: { variant?: "secondary" | "ghost"; className?: string }) {
+  const t = useT();
   const notify = useToast();
   const [open, setOpen] = useState(false);
   const [link, setLink] = useState<(DeviceLink & { until: number }) | null>(null);
@@ -57,36 +59,37 @@ export function DeviceLinkButton({ variant = "secondary", className }: { variant
 
   const left = link ? Math.max(0, Math.ceil((link.until - now) / 1000)) : 0;
   const expired = !!link && left === 0;
-  const url = link && typeof window !== "undefined" ? `${window.location.origin}/claim?code=${encodeURIComponent(link.code)}` : "";
-  const copy = async (text: string, what: string) => notify((await copyText(text)) ? `${what} copied` : "Couldn't copy. Select it and copy by hand.");
+  const url = link && typeof window !== "undefined" ? `${window.location.origin}/claim#code=${encodeURIComponent(link.code)}` : "";
+  const copy = async (text: string, done: string) => notify((await copyText(text)) ? done : t("link.copyFailed"));
 
   return (
     <>
       <Button type="button" variant={variant} className={className} onClick={() => setOpen(true)}>
-        <MonitorSmartphone width={16} height={16} aria-hidden="true" /> Open on another device
+        <MonitorSmartphone width={16} height={16} aria-hidden="true" /> {t("link.open")}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent title="Open on another device" description="Use this once, within 10 minutes. Anyone with it can see your trip, so only share it with yourself.">
+        <DialogContent title={t("link.open")} description={t("link.desc")}>
           <div className={styles.linkBody}>
-            {loading && !link ? <Skeleton label="Getting a code" lines={3} /> : null}
-            {error ? <ErrorState compact error={error} title="We couldn't make a code" onRetry={() => void request()} /> : null}
+            {loading && !link ? <Skeleton label={t("link.getting")} lines={3} /> : null}
+            {error ? <ErrorState compact error={error} title={t("link.error")} onRetry={() => void request()} /> : null}
             {link ? (
               <>
-                <p className={styles.linkCode} aria-label={`Code ${formatCode(link.code).split("").join(" ")}`} style={expired ? { opacity: 0.4 } : undefined}>{formatCode(link.code)}</p>
-                <p className={styles.linkTimer} role="timer">
-                  {expired ? "This code has expired. Get a new one." : `Expires in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`}
+                <p className={styles.linkCode} dir="ltr" aria-label={`${t("link.codeLabel")}: ${formatCode(link.code).split("").join(" ")}`} style={expired ? { opacity: 0.55 } : undefined}>{formatCode(link.code)}</p>
+                {/* The countdown is not announced every second; only its end is. */}
+                <p className={styles.linkTimer}>
+                  {expired ? <span role="status">{t("link.expired")}</span> : t("link.expires", { time: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` })}
                 </p>
-                <p className={styles.linkUrl}>{url}</p>
+                <p className={styles.linkUrl} dir="ltr">{url}</p>
                 <div className={styles.actions}>
-                  <Button type="button" variant="secondary" disabled={expired} onClick={() => void copy(link.code, "Code")}>
-                    <Copy width={16} height={16} aria-hidden="true" /> Copy code
+                  <Button type="button" variant="secondary" disabled={expired} onClick={() => void copy(link.code, t("link.codeCopied"))}>
+                    <Copy width={16} height={16} aria-hidden="true" /> {t("link.copyCode")}
                   </Button>
-                  <Button type="button" variant="secondary" disabled={expired} onClick={() => void copy(url, "Link")}>
-                    <Copy width={16} height={16} aria-hidden="true" /> Copy link
+                  <Button type="button" variant="secondary" disabled={expired} onClick={() => void copy(url, t("link.linkCopied"))}>
+                    <Copy width={16} height={16} aria-hidden="true" /> {t("link.copyLink")}
                   </Button>
                 </div>
-                <p className={styles.muted}>On the other device, open the link, or go to the start page and choose “Enter your code”.</p>
-                <Button type="button" variant={expired ? "primary" : "ghost"} loading={loading} onClick={() => void request()}>New code</Button>
+                <p className={styles.muted}>{t("link.howTo")}</p>
+                <Button type="button" variant={expired ? "primary" : "ghost"} loading={loading} onClick={() => void request()}>{t("link.newCode")}</Button>
               </>
             ) : null}
           </div>

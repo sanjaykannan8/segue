@@ -32,7 +32,7 @@ Passport or visa details, full booking reference (PNR), date of birth, payment d
 
 ## Where personal data does not go
 
-- **Events and queues:** Redpanda events and RabbitMQ messages carry pseudonymous IDs, seats and flight numbers. No names. The authority's list is resolved to a name only when an authority user reads it, and that read is logged.
+- **Events and queues:** Redpanda events and RabbitMQ messages carry pseudonymous IDs, seats and flight numbers. No names and no assistance need: a ground job names only the resource to send (buggy, bus, escort). Crew and ground screens read the need from its encrypted table when the list is opened, only while the `assistance` consent stands, and each read is audited. The authority's list is resolved to a masked name only when an authority user reads it, and only while the `authority_share` consent stands. Consent is checked again by the consumer at delivery, so a message queued before a withdrawal is dropped.
 - **The model:** clef-flash runs on your own machine. Its input holds times, counts, a seat and, with consent, the declared assistance need. No name, phone or ID (tested: `tests/test_engine.py::test_model_state_holds_no_identity`).
 - **Logs:** services log event types and error classes, not payloads. The model SDK's body logging is turned off.
 

@@ -10,6 +10,7 @@ import { PasswordField } from "@/components/arc/password-field/password-field";
 import { homeFor } from "@/components/segue/staff-shell";
 import { LogoTile, Mascot } from "@/components/segue/ui";
 import { api, errorMessage, isStatus } from "@/lib/api";
+import { PageTitle } from "@/lib/i18n";
 import styles from "./login.module.css";
 
 export default function LoginPage() {
@@ -42,6 +43,7 @@ export default function LoginPage() {
 
   return (
     <main className={styles.page}>
+      <PageTitle title="Staff sign in" />
       <div className={styles.card}>
         <div className={styles.head}>
           <LogoTile size={48} />

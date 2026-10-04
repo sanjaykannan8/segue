@@ -15,54 +15,56 @@ import { Switch } from "@/components/arc/switch/switch";
 import { DeviceLinkButton } from "@/components/segue/device-link";
 import { HeaderLink, PassengerShell } from "@/components/segue/passenger-shell";
 import { useToast } from "@/components/segue/toasts";
-import { ErrorState, Fact, FormError, LoadingPanel, Mascot, Panel, PanelHeader } from "@/components/segue/ui";
-import { api, errorMessage, isStatus, useResource, type Language, type Me, type Purpose } from "@/lib/api";
-import { formatDateTime, humanize, PURPOSE_LABEL } from "@/lib/format";
+import { ErrorState, Fact, FormError, LoadingPanel, Ltr, Mascot, Panel, PanelHeader } from "@/components/segue/ui";
+import { api, isStatus, useResource, type Language, type Me, type Purpose } from "@/lib/api";
+import { humanize } from "@/lib/format";
+import { EmailVerify } from "@/components/segue/email-verify";
+import { asLanguage, LANGUAGE_OPTIONS, useFormat, useI18n, useT } from "@/lib/i18n";
 import styles from "../passenger.module.css";
 
-const PURPOSES: { id: Purpose; hint: string }[] = [
-  { id: "tracking", hint: "Required. Turning this off deletes everything and ends your session." },
-  { id: "notifications", hint: "Messages about your connection." },
-  { id: "assistance", hint: "Your assistance need, shared only with ops, crew and ground staff." },
-  { id: "authority_share", hint: "Lets us ask the airport for fast-track. The airport decides." },
-];
-const LANGUAGES = [
-  { value: "en", label: "English" },
-  { value: "hi", label: "हिन्दी (Hindi)" },
-];
+const PURPOSES: Purpose[] = ["tracking", "notifications", "assistance", "authority_share"];
 
 const granted = (me: Me, purpose: Purpose) => me.consents.some((c) => c.purpose === purpose && !c.withdrawn_at);
 
 function DetailsForm({ me, onSaved }: { me: Me; onSaved: (me: Me) => void }) {
+  const { t, lang, setLanguage } = useI18n();
   const notify = useToast();
   const [name, setName] = useState(me.name ?? "");
   const [phone, setPhone] = useState(me.phone ?? "");
-  const [language, setLanguage] = useState<Language>(me.language === "hi" ? "hi" : "en");
+  const [email, setEmail] = useState(me.email ?? "");
+  const [language, setLang] = useState<Language>(asLanguage(me.language) ?? lang);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const canEmail = granted(me, "notifications");
 
   async function save(event: FormEvent) {
     event.preventDefault();
     setSaving(true);
     setError(null);
     try {
-      onSaved(await api.updateMyData({ name: name.trim(), phone: phone.trim(), language }));
-      notify("Details saved");
+      // Email is stored only with the "updates" consent; without it the field is left out so nothing is refused.
+      const next = await api.updateMyData({ name: name.trim(), phone: phone.trim(), language, ...(canEmail || email.trim() !== (me.email ?? "") ? { email: email.trim() } : {}) });
+      setLanguage(language);
+      onSaved(next);
+      notify(t("privacy.saved"));
     } catch (caught) { setError(caught); } finally { setSaving(false); }
   }
 
   return (
-    <form className={styles.fields} onSubmit={save}>
-      <Input label="Name" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} />
-      <Input label="Phone" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} />
-      <Select label="Language" value={language} onValueChange={(value) => setLanguage(value as Language)} options={LANGUAGES} />
+    <form className={styles.fields} onSubmit={save} noValidate>
+      <Input label={t("privacy.name")} autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} />
+      <Input label={t("privacy.phone")} type="tel" inputMode="tel" autoComplete="tel" dir="ltr" value={phone} onChange={(event) => setPhone(event.target.value)} />
+      <Input label={t("privacy.email")} type="email" inputMode="email" autoComplete="email" dir="ltr" value={email} onChange={(event) => setEmail(event.target.value)} description={t("privacy.emailHint")} />
+      <Select label={t("lang.label")} value={language} onValueChange={(value) => { const next = asLanguage(value); if (next) setLang(next); }} options={LANGUAGE_OPTIONS} />
+      {/* A 403 here is the API saying email needs the updates consent; its message is shown as given. */}
       <FormError error={error} />
-      <Button type="submit" variant="secondary" loading={saving}>Save changes</Button>
+      <Button type="submit" variant="secondary" loading={saving}>{t("privacy.save")}</Button>
     </form>
   );
 }
 
 function GrievanceForm({ onSent }: { onSent: () => void }) {
+  const t = useT();
   const notify = useToast();
   const id = useId();
   const [message, setMessage] = useState("");
@@ -71,30 +73,31 @@ function GrievanceForm({ onSent }: { onSent: () => void }) {
 
   async function send(event: FormEvent) {
     event.preventDefault();
-    if (!message.trim()) { setError(new Error("Write a short message first.")); return; }
+    if (!message.trim()) { setError(new Error(t("privacy.complaintEmpty"))); return; }
     setBusy(true);
     setError(null);
     try {
       await api.grievance(message.trim());
       setMessage("");
-      notify("Complaint sent", "You can follow it under your requests.");
+      notify(t("privacy.complaintSent"), t("privacy.complaintSentBody"));
       onSent();
     } catch (caught) { setError(caught); } finally { setBusy(false); }
   }
 
   return (
-    <form className={styles.fields} onSubmit={send}>
+    <form className={styles.fields} onSubmit={send} noValidate>
       <div>
-        <label className={styles.label} htmlFor={id}>What went wrong?</label>
-        <textarea id={id} className={styles.textarea} value={message} onChange={(event) => setMessage(event.target.value)} maxLength={2000} />
+        <label className={styles.label} htmlFor={id}>{t("privacy.complaintLabel")}</label>
+        <textarea id={id} className={styles.textarea} value={message} onChange={(event) => setMessage(event.target.value)} maxLength={2000} aria-invalid={error ? true : undefined} aria-describedby={error ? `${id}-error` : undefined} />
       </div>
-      <FormError error={error} />
-      <Button type="submit" variant="secondary" loading={busy}>Send complaint</Button>
+      <FormError error={error} id={`${id}-error`} />
+      <Button type="submit" variant="secondary" loading={busy}>{t("privacy.complaintSend")}</Button>
     </form>
   );
 }
 
 function NomineeForm({ onSent }: { onSent: () => void }) {
+  const t = useT();
   const notify = useToast();
   const [name, setName] = useState("");
   const [contact, setContact] = useState("");
@@ -103,30 +106,32 @@ function NomineeForm({ onSent }: { onSent: () => void }) {
 
   async function send(event: FormEvent) {
     event.preventDefault();
-    if (!name.trim() || !contact.trim()) { setError(new Error("Add your nominee's name and how to reach them.")); return; }
+    if (!name.trim() || !contact.trim()) { setError(new Error(t("privacy.nomineeEmpty"))); return; }
     setBusy(true);
     setError(null);
     try {
       await api.nominee(name.trim(), contact.trim());
       setName("");
       setContact("");
-      notify("Nominee saved");
+      notify(t("privacy.nomineeSaved"));
       onSent();
     } catch (caught) { setError(caught); } finally { setBusy(false); }
   }
 
   return (
-    <form className={styles.fields} onSubmit={send}>
-      <Input label="Nominee's name" autoComplete="off" value={name} onChange={(event) => setName(event.target.value)} />
-      <Input label="Phone or email" autoComplete="off" value={contact} onChange={(event) => setContact(event.target.value)} />
+    <form className={styles.fields} onSubmit={send} noValidate>
+      <Input label={t("privacy.nomineeName")} autoComplete="off" value={name} onChange={(event) => setName(event.target.value)} />
+      <Input label={t("privacy.nomineeContact")} autoComplete="off" value={contact} onChange={(event) => setContact(event.target.value)} />
       <FormError error={error} />
-      <Button type="submit" variant="secondary" loading={busy}>Save nominee</Button>
+      <Button type="submit" variant="secondary" loading={busy}>{t("privacy.nomineeSave")}</Button>
     </form>
   );
 }
 
 export default function PrivacyPage() {
   const router = useRouter();
+  const t = useT();
+  const format = useFormat();
   const notify = useToast();
   const me = useResource(api.me);
   const requests = useResource(api.myRequests);
@@ -155,7 +160,7 @@ export default function PrivacyPage() {
     setDialogError(null);
     try {
       await action();
-      notify("Your data has been deleted");
+      notify(t("privacy.deleted"));
       router.replace("/");
     } catch (caught) {
       setDialogError(caught);
@@ -176,60 +181,68 @@ export default function PrivacyPage() {
       link.remove();
       URL.revokeObjectURL(url);
     } catch (caught) {
-      notify("Download failed", errorMessage(caught));
+      notify(t("privacy.downloadFailed"), format.error(caught));
     } finally { setDownloading(false); }
   }
 
   const data = me.data;
-  const back = <HeaderLink href={data && !data.has_itinerary ? "/scan" : "/trip"}>{data && !data.has_itinerary ? "Add trip" : "Your trip"}</HeaderLink>;
+  const title = t("title.privacy");
+  const back = <HeaderLink href={data && !data.has_itinerary ? "/scan" : "/trip"}>{t(data && !data.has_itinerary ? "shell.addTrip" : "shell.yourTrip")}</HeaderLink>;
 
   if (me.loading || noSession) {
-    return <PassengerShell title="Your data"><LoadingPanel label="Loading your data" lines={5} /></PassengerShell>;
+    return <PassengerShell pageTitle={title} title={title}><LoadingPanel label={t("privacy.loading")} lines={5} /></PassengerShell>;
   }
   if (!data) {
-    return <PassengerShell title="Your data"><ErrorState error={me.error} onRetry={() => void me.reload()} /></PassengerShell>;
+    return <PassengerShell pageTitle={title} title={title}><ErrorState error={me.error} onRetry={() => void me.reload()} /></PassengerShell>;
   }
 
+  const language = LANGUAGE_OPTIONS.find((option) => option.value === data.language)?.label ?? data.language;
+
   return (
-    <PassengerShell title="Your data" intro={<>See, change, download or delete what Segue holds about you. <Link href="/privacy-policy">Read the privacy policy</Link></>} action={back}>
+    <PassengerShell pageTitle={title} title={title} intro={<>{t("privacy.intro")} <Link href="/privacy-policy">{t("privacy.readPolicy")}</Link></>} action={back}>
+      <EmailVerify me={data} onChange={() => void me.reload()} />
       <Panel>
-        <PanelHeader title="What we hold" />
+        <PanelHeader title={t("privacy.hold")} />
         <dl className={styles.facts}>
-          <Fact label="Name">{data.name || "Not given"}</Fact>
-          <Fact label="Phone">{data.phone || "Not given"}</Fact>
-          <Fact label="Language">{data.language === "hi" ? "Hindi" : "English"}</Fact>
-          <Fact label="Trip">{data.has_itinerary ? "One connection" : "None yet"}</Fact>
-          <Fact label="Your Segue ID">{data.principal_id}</Fact>
+          <Fact label={t("privacy.name")}>{data.name || t("privacy.notGiven")}</Fact>
+          <Fact label={t("privacy.phone")}>{data.phone ? <Ltr>{data.phone}</Ltr> : t("privacy.notGiven")}</Fact>
+          <Fact label={t("privacy.email")}>{data.email ? <Ltr>{data.email}</Ltr> : t("privacy.notGiven")}</Fact>
+          <Fact label={t("lang.label")}>{language}</Fact>
+          <Fact label={t("privacy.trip")}>{t(data.has_itinerary ? "privacy.tripOne" : "privacy.tripNone")}</Fact>
+          <Fact label={t("privacy.id")}><Ltr>{data.principal_id}</Ltr></Fact>
         </dl>
         <div className={styles.fields} style={{ marginTop: "var(--space-5)" }}>
           <Button variant="secondary" onClick={download} loading={downloading} className={styles.full}>
-            <Download width={16} height={16} aria-hidden="true" /> Download my data
+            <Download width={16} height={16} aria-hidden="true" /> {t("privacy.download")}
           </Button>
           <DeviceLinkButton className={styles.full} />
         </div>
       </Panel>
 
       <Panel>
-        <PanelHeader title="Edit your details" />
-        <DetailsForm key={`${data.name}|${data.phone}|${data.language}`} me={data} onSaved={me.setData} />
+        <PanelHeader title={t("privacy.edit")} />
+        <DetailsForm key={`${data.name}|${data.phone}|${data.email}|${data.language}|${granted(data, "notifications")}`} me={data} onSaved={me.setData} />
       </Panel>
 
       <Panel>
-        <PanelHeader title="Your choices" hint="Turn a purpose on or off at any time." />
+        <PanelHeader title={t("privacy.choices")} hint={t("privacy.choicesHint")} />
         <div>
-          {PURPOSES.map(({ id, hint }) => {
+          {PURPOSES.map((id) => {
             const on = granted(data, id);
             const record = data.consents.find((c) => c.purpose === id);
             return (
               <div key={id} className={styles.switchRow}>
                 <div className={styles.switchCopy}>
-                  <p className={styles.switchTitle} id={`purpose-${id}`}>{PURPOSE_LABEL[id]}</p>
-                  <p className={styles.switchHint}>{hint}</p>
+                  <p className={styles.switchTitle} id={`purpose-${id}`}>{t(`purpose.${id}`)}</p>
+                  <p className={styles.switchHint} id={`purpose-${id}-hint`}>{t(`purpose.${id}.hint`)}</p>
                   <p className={styles.switchHint}>
-                    {on && record ? `On since ${formatDateTime(record.granted_at)}` : record?.withdrawn_at ? `Off since ${formatDateTime(record.withdrawn_at)}` : "Off"}
+                    {on && record ? t("privacy.onSince", { date: format.dateTime(record.granted_at) }) : record?.withdrawn_at ? t("privacy.offSince", { date: format.dateTime(record.withdrawn_at) }) : t("privacy.off")}
                   </p>
                 </div>
-                <Switch checked={on} disabled={pending !== null} onCheckedChange={(next) => void setConsent(id, next)} aria-label={PURPOSE_LABEL[id]} />
+                {/* The control keeps its left-to-right travel; its name and hint come from the text beside it. */}
+                <span dir="ltr">
+                  <Switch checked={on} disabled={pending !== null} onCheckedChange={(next) => void setConsent(id, next)} aria-label={t(`purpose.${id}`)} aria-describedby={`purpose-${id}-hint`} />
+                </span>
               </div>
             );
           })}
@@ -238,33 +251,33 @@ export default function PrivacyPage() {
       </Panel>
 
       <Panel>
-        <PanelHeader title="Make a complaint" hint="Tell us if something about your data is wrong." />
+        <PanelHeader title={t("privacy.complaint")} hint={t("privacy.complaintHint")} />
         <GrievanceForm onSent={() => void requests.reload()} />
       </Panel>
 
       <Panel>
-        <PanelHeader title="Name a nominee" hint="Someone who can use your data rights for you if you can't." />
+        <PanelHeader title={t("privacy.nominee")} hint={t("privacy.nomineeHint")} />
         <NomineeForm onSent={() => void requests.reload()} />
       </Panel>
 
       <Panel>
-        <PanelHeader title="Your requests" />
-        {requests.loading ? <Skeleton label="Loading your requests" lines={2} /> : null}
-        {!requests.loading && !requests.data ? <ErrorState compact error={requests.error} onRetry={() => void requests.reload()} title="Requests didn't load" /> : null}
+        <PanelHeader title={t("privacy.requests")} />
+        {requests.loading ? <Skeleton label={t("privacy.requestsLoading")} lines={2} /> : null}
+        {!requests.loading && !requests.data ? <ErrorState compact error={requests.error} onRetry={() => void requests.reload()} title={t("privacy.requestsError")} /> : null}
         {requests.data && requests.data.length === 0 ? (
-          <EmptyState icon={<Mascot pose="sleepy" size={40} />} title="No requests yet" description="Complaints and nominee requests you send will be listed here." label="No requests" />
+          <EmptyState icon={<Mascot pose="sleepy" size={40} />} title={t("privacy.noRequests")} description={t("privacy.noRequestsBody")} />
         ) : null}
         {requests.data && requests.data.length > 0 ? (
           <ul className={styles.requests}>
             {requests.data.map((request) => (
               <li key={request.id} className={styles.request}>
                 <div>
-                  <p>{humanize(request.type)}</p>
+                  <p>{request.type === "grievance" || request.type === "nominee" ? t(`request.${request.type}`) : humanize(request.type)}</p>
                   <p className={styles.requestMeta}>
-                    Opened {formatDateTime(request.opened_at)}{request.closed_at ? ` · closed ${formatDateTime(request.closed_at)}` : ""}
+                    {t("privacy.opened", { date: format.dateTime(request.opened_at) })}{request.closed_at ? ` · ${t("privacy.closed", { date: format.dateTime(request.closed_at) })}` : ""}
                   </p>
                 </div>
-                <Badge size="sm" tone={request.closed_at ? "neutral" : "info"}>{humanize(request.status)}</Badge>
+                <Badge size="sm" tone={request.closed_at ? "neutral" : "info"}>{request.status === "open" || request.status === "closed" ? t(`reqStatus.${request.status}`) : humanize(request.status)}</Badge>
               </li>
             ))}
           </ul>
@@ -272,26 +285,26 @@ export default function PrivacyPage() {
       </Panel>
 
       <Panel className={styles.danger}>
-        <PanelHeader title="Delete everything" hint="Erases all your personal data and ends your session. This can't be undone." />
-        <Button variant="danger" onClick={() => { setDialogError(null); setConfirmDelete(true); }} className={styles.full}>Delete everything</Button>
+        <PanelHeader title={t("privacy.delete")} hint={t("privacy.deleteHint")} />
+        <Button variant="danger" onClick={() => { setDialogError(null); setConfirmDelete(true); }} className={styles.full}>{t("privacy.delete")}</Button>
       </Panel>
 
       <Dialog open={confirmWithdraw} onOpenChange={(open) => { if (!working) setConfirmWithdraw(open); }}>
-        <DialogContent title="Stop tracking your connection?" description="Tracking is what Segue runs on. Turning it off deletes everything we hold about you and ends your session.">
+        <DialogContent title={t("privacy.stopAsk")} description={t("privacy.stopDesc")}>
           <FormError error={dialogError} />
           <div className={styles.dialogActions}>
-            <DialogClose asChild><Button variant="secondary" disabled={working}>Keep tracking</Button></DialogClose>
-            <Button variant="danger" loading={working} onClick={() => void endEverything(() => api.withdrawConsent("tracking"))}>Stop and delete</Button>
+            <DialogClose asChild><Button variant="secondary" disabled={working}>{t("privacy.keep")}</Button></DialogClose>
+            <Button variant="danger" loading={working} onClick={() => void endEverything(() => api.withdrawConsent("tracking"))}>{t("privacy.stopConfirm")}</Button>
           </div>
         </DialogContent>
       </Dialog>
 
       <Dialog open={confirmDelete} onOpenChange={(open) => { if (!working) setConfirmDelete(open); }}>
-        <DialogContent title="Delete everything?" description="All your personal data is erased and you are signed out. This can't be undone.">
+        <DialogContent title={t("privacy.deleteAsk")} description={t("privacy.deleteDesc")}>
           <FormError error={dialogError} />
           <div className={styles.dialogActions}>
-            <DialogClose asChild><Button variant="secondary" disabled={working}>Cancel</Button></DialogClose>
-            <Button variant="danger" loading={working} onClick={() => void endEverything(api.deleteMe)}>Delete everything</Button>
+            <DialogClose asChild><Button variant="secondary" disabled={working}>{t("common.cancel")}</Button></DialogClose>
+            <Button variant="danger" loading={working} onClick={() => void endEverything(api.deleteMe)}>{t("privacy.delete")}</Button>
           </div>
         </DialogContent>
       </Dialog>

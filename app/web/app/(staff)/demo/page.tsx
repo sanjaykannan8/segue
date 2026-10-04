@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowRight, GitBranch, Inbox, Radio, Send, ShieldCheck, Timer, TrendingUp, User, Workflow, Zap, type LucideIcon } from "lucide-react";
+import { GitBranch, Inbox, Radio, Send, ShieldCheck, Timer, TrendingUp, User, Workflow, Zap, type LucideIcon } from "lucide-react";
 import { Alert } from "@/components/arc/alert/alert";
 import { Badge } from "@/components/arc/badge/badge";
 import { Button } from "@/components/arc/button/button";
@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/arc/skeleton/skeleton";
 import { LiveState, StaffHeading } from "@/components/segue/staff-shell";
 import { ErrorState, Mascot, Panel, PanelHeader, RiskBadge } from "@/components/segue/ui";
 import { api, errorMessage, streams, useEventStream, useResource, type TraceEntry, type TraceStage } from "@/lib/api";
-import { asRiskLevel, flightLabel, formatBuffer, humanize, RISK_LABEL } from "@/lib/format";
+import { asRiskLevel, formatBuffer, humanize, RISK_LABEL } from "@/lib/format";
 import { clockTime } from "@/lib/hooks";
 import { ConnectionStrip, PassengerGrid, StoryCard } from "./demo-board";
 import board_styles from "./demo-board.module.css";

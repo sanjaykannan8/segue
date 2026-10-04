@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/arc/empty-state/empty-state";
 import { Skeleton } from "@/components/arc/skeleton/skeleton";
 import { SortableDataTable, type DataColumn } from "@/components/arc/sortable-data-table/sortable-data-table";
 import { LiveState, StaffHeading } from "@/components/segue/staff-shell";
-import { ErrorState, Mascot, Panel, PanelHeader, RiskBadge, StaleNote } from "@/components/segue/ui";
+import { ErrorState, LiveRegion, Mascot, Panel, PanelHeader, RiskBadge, StaleNote } from "@/components/segue/ui";
 import { useLive } from "@/components/segue/use-live";
 import { api, type AuthorityRequest } from "@/lib/api";
 import { asRiskLevel, flightLabel, formatDateTime, RISK_RANK } from "@/lib/format";
@@ -32,7 +32,7 @@ export default function AuthorityPage() {
     const deadline = request.deadline ? new Date(request.deadline).getTime() : NaN;
     return {
       id: request.id,
-      name: request.name ?? "Name not shared",
+      name: request.name ?? "Not shared",
       flights: `${flightLabel(request.inbound)} → ${flightLabel(request.outbound)}`,
       airport: request.airport,
       deadline: Number.isNaN(deadline) ? null : deadline,
@@ -46,17 +46,18 @@ export default function AuthorityPage() {
 
   return (
     <>
-      <StaffHeading title="Fast-track requests" hint="Passengers who agreed to share their details and are short on time." aside={<LiveState state={list.stream} />} />
-      <Alert tone="info" title="The airport decides.">Segue only requests fast-track. Each passenger on this list agreed to share these details.</Alert>
+      <StaffHeading title="Airport authority" hint="Fast-track requests to approve or refuse." aside={<LiveState state={list.stream} />} />
+      <Alert tone="info" title="The airport decides.">Segue only asks for fast-track; you approve or refuse it in your own system. Every passenger on this list consented to sharing these details. Names are masked. Confirm with the flight.</Alert>
+      {data ? <LiveRegion>{`Requests updated: ${data.length} ${data.length === 1 ? "request" : "requests"}.`}</LiveRegion> : null}
       {data ? <StaleNote error={list.error} onRetry={() => void list.reload()} /> : null}
       {list.loading ? <Panel><Skeleton label="Loading fast-track requests" lines={5} /></Panel> : null}
       {!list.loading && !data ? <ErrorState error={list.error} onRetry={() => void list.reload()} title="The request list didn't load" /> : null}
       {data && data.length === 0 ? (
-        <Panel><EmptyState icon={<Mascot pose="sleepy" size={40} />} title="No requests right now" description="Fast-track requests appear here when a passenger who agreed to share is short on time." label="No fast-track requests" /></Panel>
+        <Panel><EmptyState icon={<Mascot pose="sleepy" size={40} />} title="No requests right now" description="A request appears here when a passenger at Dubai International is short on time for a connection and has consented to sharing their name and flights with the airport." /></Panel>
       ) : null}
       {data && data.length > 0 ? (
         <Panel label="Fast-track requests">
-          <PanelHeader title="Requests" hint="Earliest deadline first." />
+          <PanelHeader title="Fast-track requests" hint="Earliest deadline first." />
           <SortableDataTable rows={rows} columns={COLUMNS} rowKey="id" caption="Fast-track requests" defaultSort={{ key: "deadline", direction: "asc" }} itemName={{ one: "request", other: "requests" }} />
         </Panel>
       ) : null}

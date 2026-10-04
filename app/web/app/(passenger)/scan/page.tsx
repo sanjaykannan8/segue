@@ -16,11 +16,13 @@ import { PassScanner } from "@/components/segue/pass-scanner";
 import { ErrorState, FormError, LoadingPanel, Panel } from "@/components/segue/ui";
 import { api, isStatus, useResource, type AssistanceType, type Booking } from "@/lib/api";
 import type { Bcbp } from "@/lib/bcbp";
-import { ASSISTANCE_OPTIONS, flightLabel } from "@/lib/format";
+import { ASSISTANCE_TYPES, flightLabel } from "@/lib/format";
+import { useT } from "@/lib/i18n";
 import styles from "../passenger.module.css";
 
 export default function ScanPage() {
   const router = useRouter();
+  const t = useT();
   const me = useResource(api.me);
   const [tab, setTab] = useState("manual");
   const [inbound, setInbound] = useState<FlightChoice | null>(null);
@@ -51,7 +53,7 @@ export default function ScanPage() {
     setOutbound(null);
     setPrefill((now) => ({ inbound: one.flightIata, outbound: two?.flightIata, stamp: now.stamp + 1 }));
     if (one.seat) setSeat(one.seat);
-    setScanned(pass.legs.map((leg) => `${flightLabel(leg.flightIata)} ${leg.from} to ${leg.to}`).join(", "));
+    setScanned(pass.legs.map((leg) => `${flightLabel(leg.flightIata)} ${leg.from}→${leg.to}`).join(", "));
     setTab("manual");
   }
 
@@ -70,23 +72,25 @@ export default function ScanPage() {
       });
       router.push("/trip");
     } catch (error) {
+      // A connection that is not through Dubai International comes back as 400 with the API's own message.
       setSubmitError(error);
       setBusy(false);
     }
   }
 
+  const title = t("title.scan");
   if (me.loading || unauthorized) {
-    return <PassengerShell title="Add your trip"><LoadingPanel label="Loading" lines={4} /></PassengerShell>;
+    return <PassengerShell pageTitle={title} title={title}><LoadingPanel lines={4} /></PassengerShell>;
   }
   if (!me.data) {
-    return <PassengerShell title="Add your trip"><ErrorState error={me.error} onRetry={() => void me.reload()} /></PassengerShell>;
+    return <PassengerShell pageTitle={title} title={title}><ErrorState error={me.error} onRetry={() => void me.reload()} /></PassengerShell>;
   }
 
   return (
-    <PassengerShell title="Add your trip" intro="Pick your two flights, or scan your boarding pass." action={<HeaderLink href="/privacy">Your data</HeaderLink>}>
+    <PassengerShell pageTitle={title} title={title} intro={t("scan.intro")} action={<HeaderLink href="/privacy">{t("shell.yourData")}</HeaderLink>}>
       {me.data.has_itinerary ? (
-        <Alert tone="info" title="You already have a trip">
-          <Link href="/trip">Go to your trip</Link>
+        <Alert tone="info" title={t("scan.haveTrip")}>
+          <Link href="/trip">{t("scan.goTrip")}</Link>
         </Alert>
       ) : null}
 
@@ -94,9 +98,9 @@ export default function ScanPage() {
         {/* Both panels stay mounted (forceMount) and the idle one is hidden, so the card always takes its height
             from the content on show and grows with it; nothing animates or pins the panel height. */}
         <Tabs value={tab} onValueChange={setTab}>
-          <TabsList aria-label="How to add your trip">
-            <TabsTrigger value="manual">Find flights</TabsTrigger>
-            <TabsTrigger value="scan">Scan pass</TabsTrigger>
+          <TabsList aria-label={t("scan.tabsLabel")}>
+            <TabsTrigger value="manual">{t("scan.tabFind")}</TabsTrigger>
+            <TabsTrigger value="scan">{t("scan.tabScan")}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="scan" forceMount className={styles.tabPanel}>
@@ -108,14 +112,15 @@ export default function ScanPage() {
               {scanned ? (
                 <p className={styles.scanned} role="status">
                   <ScanLine width={18} height={18} aria-hidden="true" />
-                  <span>Read from your pass: {scanned}. Confirm each flight below.</span>
+                  <span>{t("scan.scanned", { flights: `⁦${scanned}⁩` })}</span>
                 </p>
               ) : null}
 
               <FlightPicker
                 key={`in-${prefill.stamp}`}
                 step={1}
-                title="Your first flight"
+                leg="first"
+                title={t("scan.first")}
                 value={inbound}
                 onChange={(choice) => { setInbound(choice); setOutbound(null); setBookingChoice(null); }}
                 prefillNumber={prefill.inbound}
@@ -125,12 +130,13 @@ export default function ScanPage() {
                 <>
                   <hr className={styles.divider} style={{ margin: 0 }} />
                   <FlightPicker
-                    key={`out-${prefill.stamp}-${first.iata}-${first.dest}`}
+                    key={`out-${prefill.stamp}-${first.iata}`}
                     step={2}
-                    title="Your connecting flight"
+                    leg="second"
+                    title={t("scan.second")}
+                    after={first.arr}
                     value={outbound}
                     onChange={(choice) => { setOutbound(choice); setBookingChoice(null); }}
-                    from={/^[A-Z]{3}$/.test(first.dest) ? { airport: first.dest, after: first.arr } : undefined}
                     prefillNumber={prefill.outbound}
                   />
                 </>
@@ -140,18 +146,18 @@ export default function ScanPage() {
                 <>
                   <hr className={styles.divider} style={{ margin: 0 }} />
                   <BookingChoice value={booking} onChange={setBookingChoice} />
-                  <Input label="Seat on your first flight (optional)" placeholder="12A" autoCapitalize="characters" autoComplete="off" value={seat} onChange={(event) => setSeat(event.target.value)} description="Helps the crew let you off first if time is short." />
+                  <Input label={t("scan.seat")} placeholder="12A" dir="ltr" autoCapitalize="characters" autoComplete="off" value={seat} onChange={(event) => setSeat(event.target.value)} description={t("scan.seatHint")} />
                   {canShareAssistance ? (
                     <Select
-                      label="Assistance need"
+                      label={t("scan.assistance")}
                       value={assistance}
                       onValueChange={(value) => setAssistance(value as AssistanceType)}
-                      options={ASSISTANCE_OPTIONS}
-                      description="Shared only with ops, crew and ground staff."
+                      options={ASSISTANCE_TYPES.map((value) => ({ value, label: t(`assist.${value}`) }))}
+                      description={t("scan.assistanceHint")}
                     />
                   ) : null}
                   <FormError error={submitError} />
-                  <Button type="submit" size="lg" loading={busy} className={styles.full}>Add this trip</Button>
+                  <Button type="submit" size="lg" loading={busy} className={styles.full}>{t("scan.submit")}</Button>
                 </>
               ) : null}
             </form>
@@ -159,7 +165,7 @@ export default function ScanPage() {
         </Tabs>
       </Panel>
 
-      <p className={styles.muted} style={{ textAlign: "center" }}>We only use your flights to watch this connection.</p>
+      <p className={styles.muted} style={{ textAlign: "center" }}>{t("scan.footnote")}</p>
     </PassengerShell>
   );
 }

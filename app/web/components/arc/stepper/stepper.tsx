@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion } from "motion/react";
 import { motionTokens } from "../lib/motion-tokens";
+import { arcLabels } from "../lib/labels";
 import styles from "./stepper.module.css";
 
 export type StepperOrientation = "horizontal" | "vertical";
@@ -112,7 +113,7 @@ function Marker({ number, kind, current, glyphDelay, ringDelay, reduced }: { num
   </span>;
 }
 
-const statusText: Record<StepperStatus, string> = { complete: "Completed", current: "", upcoming: "Not started", error: "Error" };
+const statusTextFor = (status: StepperStatus): string => (status === "complete" ? arcLabels.stepCompleted : status === "upcoming" ? arcLabels.stepUpcoming : status === "error" ? arcLabels.stepError : "");
 
 export function Stepper({ steps, current, orientation = "horizontal", onStepSelect, details = "all", compact = false, label = "Progress", completeLabel = "All steps complete", className }: StepperProps) {
   const reduced = useReducedMotion() ?? false;
@@ -161,7 +162,7 @@ export function Stepper({ steps, current, orientation = "horizontal", onStepSele
           <Marker number={index + 1} kind={kind} current={isCurrent} glyphDelay={delayAt(index)} ringDelay={ringDelay} reduced={reduced} />
           <span className={styles.text}>
             <span className={styles.label}>{step.label}</span>
-            {statusText[status] ? <span className={styles.srOnly}>, {statusText[status]}</span> : null}
+            {statusTextFor(status) ? <span className={styles.srOnly}>, {statusTextFor(status)}</span> : null}
             <SwapText text={detail} className={step.error ? styles.error : styles.description} reduced={reduced} />
           </span>
         </>;
@@ -179,7 +180,7 @@ export function Stepper({ steps, current, orientation = "horizontal", onStepSele
       <SwapText text={now?.label ?? completeLabel} className={styles.captionLabel} reduced={reduced} />
       <SwapText text={now?.error ?? now?.description} className={now?.error ? styles.error : styles.description} reduced={reduced} />
     </span>}
-    <span className={styles.srOnly} aria-live="polite">{now ? `Step ${active + 1} of ${count}: ${now.label}` : completeLabel}</span>
+    <span className={styles.srOnly} aria-live="polite">{now ? arcLabels.stepPosition(active + 1, count, now.label) : completeLabel}</span>
   </Root>;
 }
 

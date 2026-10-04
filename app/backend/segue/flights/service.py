@@ -1,4 +1,5 @@
 """Flight rows: create, update with a version bump, and the view sent to the UI."""
+import time
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -44,7 +45,8 @@ async def upsert(db: AsyncSession, data: dict, source: str) -> tuple[FlightInsta
 
 
 def apply(flight: FlightInstance, fields: dict, source: str) -> bool:
-    """Apply field changes. Bumps the version only when something material changed."""
+    """Apply field changes. Bumps the version only when something material changed.
+    Only `manual` (the admin console and an approved hold) pins a field against the provider."""
     changed = False
     overrides = dict(flight.overrides or {})
     for name in ALL:
@@ -70,4 +72,4 @@ def apply(flight: FlightInstance, fields: dict, source: str) -> bool:
 
 async def publish_update(producer, flight: FlightInstance, event_id: str | None = None) -> None:
     """Keyed by flight id, so one flight's events stay in order on its partition."""
-    await producer.send_and_wait(TOPIC_FLIGHT, key=flight.id, value={"type": "flight.updated", "event_id": event_id or uid(), "flight_id": flight.id, "version": flight.version})
+    await producer.send_and_wait(TOPIC_FLIGHT, key=flight.id, value={"type": "flight.updated", "event_id": event_id or uid(), "flight_id": flight.id, "version": flight.version, "published_at": time.time()})

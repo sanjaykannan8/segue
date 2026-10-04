@@ -1,8 +1,7 @@
 .host {
   position: fixed;
   z-index: 1000;
-  left: 0;
-  right: 0;
+  inset-inline: 0;
   bottom: max(var(--space-4), env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;

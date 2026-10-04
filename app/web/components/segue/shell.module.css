@@ -21,7 +21,7 @@
 }
 .link:hover { color: var(--foreground); background: var(--surface-muted); }
 .link[aria-current="page"] { color: var(--accent-strong); background: var(--accent-subtle); }
-.end { display: flex; flex: 0 0 auto; align-items: center; gap: var(--space-2); margin-left: auto; }
+.end { display: flex; flex: 0 0 auto; align-items: center; gap: var(--space-2); margin-inline-start: auto; }
 
 /* Widths */
 .narrow { max-width: calc(var(--content-passenger) + 2 * var(--space-4)); }
@@ -63,3 +63,14 @@
   .heading { flex-direction: column; align-items: flex-start; }
   .wide .title { font-size: var(--text-2xl); }
 }
+
+/* Skip link: first in the tab order, visible only while focused. */
+.skip { position: absolute; z-index: 100; inset-block-start: var(--space-2); inset-inline-start: var(--space-2); border-radius: var(--radius-control); padding: var(--space-3) var(--space-4); background: var(--foreground); color: var(--surface); font-size: var(--text-sm); font-weight: 600; text-decoration: none; transform: translateY(-200%); }
+.skip:focus { transform: none; }
+.main:focus { outline: none; }
+
+/* Passenger screens: every control is at least 44px tall, including the small ones. */
+.passenger { --control-height-sm: 2.75rem; }
+.passenger .link { min-height: 2.75rem; }
+.passenger .footer a { display: inline-flex; min-height: 2.75rem; align-items: center; }
+.passenger .brand { min-height: 2.75rem; }

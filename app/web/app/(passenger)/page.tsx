@@ -8,34 +8,39 @@ import { Button } from "@/components/arc/button/button";
 import { Badge } from "@/components/arc/badge/badge";
 import { Checkbox } from "@/components/arc/checkbox/checkbox";
 import { Input } from "@/components/arc/input/input";
-import { Select } from "@/components/arc/select/select";
+import SegmentedControl from "@/components/arc/segmented-control/segmented-control";
 import { TextReveal } from "@/components/arc/text-reveal/text-reveal";
 import { PassengerShell } from "@/components/segue/passenger-shell";
 import { ErrorState, FormError, LoadingPanel, Mascot, Panel, PanelHeader } from "@/components/segue/ui";
-import { api, isStatus, useResource, type Language, type Purpose } from "@/lib/api";
-import { LANGUAGES, noticeSummary } from "@/lib/notice";
+import { api, isStatus, useResource, type Purpose } from "@/lib/api";
+import { asLanguage, LANGUAGE_OPTIONS, useI18n } from "@/lib/i18n";
+import { noticeSummary } from "@/lib/notice";
 import styles from "./passenger.module.css";
 
 const POINT_ICON = { collect: Database, retention: Clock, rights: ShieldCheck } as const;
 
 function Hero() {
+  const { t, lang, setLanguage } = useI18n();
   return (
     <div className={styles.hero}>
       <Mascot pose="happy" size={104} />
-      <TextReveal as="h1" text="Segue watches your connection" className={styles.heroTitle} />
-      <p className={styles.heroLine}>Add your two flights and we&apos;ll tell you if you&apos;ll make it, and where to go.</p>
+      {/* Keyed by language so the title is drawn again, whole, when the language changes. */}
+      <TextReveal key={lang} as="h1" text={t("consent.title")} className={styles.heroTitle} />
+      <p className={styles.heroLine}>{t("consent.line")}</p>
+      <SegmentedControl options={LANGUAGE_OPTIONS} value={lang} onValueChange={(value) => { const next = asLanguage(value); if (next) setLanguage(next); }} label={t("lang.label")} />
     </div>
   );
 }
 
 export default function ConsentPage() {
   const router = useRouter();
+  const { t, lang } = useI18n();
   const [checking, setChecking] = useState(true);
-  const [language, setLanguage] = useState<Language>("en");
   const [chosen, setChosen] = useState<Purpose[]>([]);
   const [adult, setAdult] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<unknown>(null);
   const [touched, setTouched] = useState(false);
@@ -49,7 +54,7 @@ export default function ConsentPage() {
     return () => { alive = false; };
   }, [router]);
 
-  const notice = useResource(() => api.notice(language), { enabled: !checking, key: language });
+  const notice = useResource(() => api.notice(lang), { enabled: !checking, key: lang });
 
   const toggle = (purpose: Purpose, on: boolean) => setChosen((current) => (on ? [...new Set([...current, purpose])] : current.filter((p) => p !== purpose)));
 
@@ -57,7 +62,8 @@ export default function ConsentPage() {
   const required = data?.purposes.filter((p) => p.required).map((p) => p.id) ?? ["tracking"];
   const missingRequired = required.some((id) => !chosen.includes(id));
   const blocked = missingRequired || !adult;
-  const policyHref = `/privacy-policy?lang=${language}`;
+  const wantsUpdates = chosen.includes("notifications");
+  const policyHref = `/privacy-policy?lang=${lang}`;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -69,10 +75,11 @@ export default function ConsentPage() {
       await api.consent({
         notice_version: data.version,
         purposes: chosen,
-        language,
+        language: lang,
         adult: true,
         ...(name.trim() ? { name: name.trim() } : {}),
         ...(phone.trim() ? { phone: phone.trim() } : {}),
+        ...(wantsUpdates && email.trim() ? { email: email.trim() } : {}),
       });
       router.push("/scan");
     } catch (error) {
@@ -83,8 +90,8 @@ export default function ConsentPage() {
 
   if (checking) {
     return (
-      <PassengerShell title="Segue watches your connection" hero={<Hero />}>
-        <LoadingPanel label="Checking your session" lines={3} />
+      <PassengerShell pageTitle={t("title.home")} title={t("consent.title")} hero={<Hero />}>
+        <LoadingPanel label={t("consent.checking")} lines={3} />
       </PassengerShell>
     );
   }
@@ -92,42 +99,45 @@ export default function ConsentPage() {
   const points = data ? noticeSummary(data) : [];
 
   return (
-    <PassengerShell title="Segue watches your connection" hero={<Hero />}>
-      {notice.loading ? <LoadingPanel label="Loading the privacy notice" lines={6} /> : null}
-      {!notice.loading && !data ? <ErrorState error={notice.error} onRetry={() => void notice.reload()} title="The privacy notice didn't load" /> : null}
+    <PassengerShell pageTitle={t("title.home")} title={t("consent.title")} hero={<Hero />}>
+      {notice.loading ? <LoadingPanel label={t("consent.noticeLoading")} lines={6} /> : null}
+      {!notice.loading && !data ? <ErrorState error={notice.error} onRetry={() => void notice.reload()} title={t("consent.noticeError")} /> : null}
 
       {data ? (
         <>
           <Panel>
-            <PanelHeader title="Your data, in short" hint={data.intro} />
-            {points.length ? (
-              <ul className={styles.points}>
-                {points.map((point) => {
-                  const Icon = POINT_ICON[point.id as keyof typeof POINT_ICON] ?? ShieldCheck;
-                  return (
-                    <li key={point.id} className={styles.point}>
-                      <span className={styles.pointIcon}><Icon width={18} height={18} aria-hidden="true" /></span>
-                      <div>
-                        <p className={styles.pointHead}>{point.heading}</p>
-                        <p className={styles.pointLine}>{point.line}</p>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : null}
+            {/* The notice text arrives translated from the API and is shown as given. */}
+            <div lang={data.lang} dir={data.dir}>
+              <PanelHeader title={t("consent.shortTitle")} hint={data.intro} />
+              {points.length ? (
+                <ul className={styles.points}>
+                  {points.map((point) => {
+                    const Icon = POINT_ICON[point.id as keyof typeof POINT_ICON] ?? ShieldCheck;
+                    return (
+                      <li key={point.id} className={styles.point}>
+                        <span className={styles.pointIcon}><Icon width={18} height={18} aria-hidden="true" /></span>
+                        <div>
+                          <p className={styles.pointHead}>{point.heading}</p>
+                          <p className={styles.pointLine}>{point.line}</p>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
+            </div>
             <Link href={policyHref} className={styles.policyLink}>
-              Read the full privacy policy <ArrowRight width={16} height={16} aria-hidden="true" />
+              {t("consent.readPolicy")} <ArrowRight width={16} height={16} aria-hidden="true" className="flip-rtl" />
             </Link>
           </Panel>
 
           <form onSubmit={submit} className={styles.stack} noValidate>
             <Panel>
-              <PanelHeader title="Your choices" hint="Nothing is ticked for you. You can change these later." />
+              <PanelHeader title={t("consent.choicesTitle")} hint={t("consent.choicesHint")} />
               <p className={styles.noticeRef}>
-                You are agreeing to <Link href={policyHref}>privacy notice version {data.version}</Link>.
+                {t("consent.agreeing")} <Link href={policyHref}>{t("consent.noticeLink", { version: data.version })}</Link>
               </p>
-              <ul className={styles.choices}>
+              <ul className={styles.choices} lang={data.lang} dir={data.dir}>
                 {data.purposes.map((purpose) => (
                   <li key={purpose.id} className={styles.choice}>
                     <Checkbox
@@ -136,29 +146,32 @@ export default function ConsentPage() {
                       checked={chosen.includes(purpose.id)}
                       onCheckedChange={(state) => toggle(purpose.id, state === true)}
                       aria-required={purpose.required || undefined}
+                      aria-describedby={purpose.required && touched && missingRequired ? "required-error" : undefined}
                     />
-                    <Badge size="sm" tone={purpose.required ? "info" : "neutral"}>{purpose.required ? "Required" : "Optional"}</Badge>
+                    <Badge size="sm" tone={purpose.required ? "info" : "neutral"}>{t(purpose.required ? "consent.required" : "consent.optional")}</Badge>
                   </li>
                 ))}
               </ul>
-              {touched && missingRequired ? <p className={styles.fieldError} role="alert">Tick the required choice to use Segue. Without it we can&apos;t track your connection.</p> : null}
+              {touched && missingRequired ? <p id="required-error" className={styles.fieldError} role="alert">{t("consent.requiredError")}</p> : null}
             </Panel>
 
             <Panel>
-              <PanelHeader title="About you" hint="Name and phone are optional." />
+              <PanelHeader title={t("consent.aboutTitle")} hint={t("consent.aboutHint")} />
               <div className={styles.fields}>
-                <Select label="Language" value={language} onValueChange={(value) => setLanguage(value as Language)} options={LANGUAGES} />
-                <Input label="Name (optional)" name="name" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} />
-                <Input label="Phone (optional)" name="phone" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} description="Used only if you choose to get updates." />
-                <Checkbox label="I am 18 or older" checked={adult} onCheckedChange={(state) => setAdult(state === true)} aria-required />
-                {touched && !adult ? <p className={styles.fieldError} role="alert" style={{ marginTop: 0 }}>Confirm you are 18 or older to continue.</p> : null}
+                <Input label={t("consent.name")} name="name" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} />
+                <Input label={t("consent.phone")} name="phone" type="tel" inputMode="tel" autoComplete="tel" dir="ltr" value={phone} onChange={(event) => setPhone(event.target.value)} description={t("consent.phoneHint")} />
+                {wantsUpdates ? (
+                  <Input label={t("consent.email")} name="email" type="email" inputMode="email" autoComplete="email" dir="ltr" value={email} onChange={(event) => setEmail(event.target.value)} description={t("consent.emailHint")} />
+                ) : null}
+                <Checkbox label={t("consent.adult")} checked={adult} onCheckedChange={(state) => setAdult(state === true)} aria-required aria-describedby={touched && !adult ? "adult-error" : undefined} />
+                {touched && !adult ? <p id="adult-error" className={styles.fieldError} role="alert" style={{ marginTop: 0 }}>{t("consent.adultError")}</p> : null}
               </div>
             </Panel>
 
-            <FormError error={isStatus(submitError, 400) ? new Error("Tick the required choice and confirm your age to continue.") : submitError} />
-            <Button type="submit" size="lg" loading={submitting} className={styles.full}>Agree and continue</Button>
+            <FormError error={isStatus(submitError, 400) ? new Error(t("consent.submitError")) : submitError} />
+            <Button type="submit" size="lg" loading={submitting} className={styles.full}>{t("consent.submit")}</Button>
           </form>
-          <p className={styles.quietLink}>Already added your trip on another device? <Link href="/claim">Enter your code</Link></p>
+          <p className={styles.quietLink}>{t("consent.haveCode")} <Link href="/claim">{t("consent.enterCode")}</Link></p>
         </>
       ) : null}
     </PassengerShell>

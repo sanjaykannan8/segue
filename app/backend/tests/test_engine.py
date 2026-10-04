@@ -119,10 +119,11 @@ async def test_assistance_needs_consent_and_never_reaches_the_authority(stub):
     await add_passenger(connection_id, "12A", purposes=("tracking", "assistance", "authority_share"), assistance="wheelchair")
     await add_passenger(connection_id, "14C", purposes=("tracking",), assistance="wheelchair")  # declared but not consented
     await run(connection_id, "e1")
-    states = [s for s in stub.states if "declared_assistance" in s]
-    assert sorted(s["declared_assistance"] for s in states) == ["none", "wheelchair"], "without consent the model never sees the need"
-    crew = {d.payload["message"]["seat"]: d.payload["message"]["assistance"] for d in await rows(Decision, Decision.type == "crew_priority_deplane")}
-    assert crew == {"12A": "wheelchair", "14C": None}
+    states = [s for s in stub.states if "passenger" in s]
+    assert sorted(s["passenger"]["declared_assistance"] for s in states) == ["none", "wheelchair"], "without consent the model never sees the need"
+    # The need stays in its encrypted table: no decision, outbox row or queue message carries it.
+    everything = repr([(d.answer, d.payload) for d in await rows(Decision)]) + repr([o.payload for o in await rows(Outbox)])
+    assert "wheelchair" not in everything and "assistance" not in everything
     fast = await rows(Decision, Decision.type == "request_fast_track")
     assert len(fast) == 1, "fast-track is requested only with the authority_share consent"
     assert "assistance" not in fast[0].payload["message"] and "seat" not in fast[0].payload["message"]
@@ -149,9 +150,9 @@ async def test_booking_type_reaches_the_model_and_the_arithmetic(stub):
     await add_passenger(connection_id, "20A", booking="single_ticket")
     await add_passenger(connection_id, "20C", booking="separate_tickets")  # needs 35 more: buffer -1
     await run(connection_id, "e1")
-    asked = [s for s in stub.states if "booking" in s]
-    assert [s["booking"] for s in asked] == ["separate_tickets"], "only the self-transfer passenger is short of time"
-    assert asked[0]["risk_level"] == "at_risk"
+    asked = [s for s in stub.states if "passenger" in s]
+    assert [s["passenger"]["booking"] for s in asked] == ["separate_tickets"], "only the self-transfer passenger is short of time"
+    assert asked[0]["connection"]["risk_level"] == "at_risk"
 
 
 async def test_ops_counts_only_protected_passengers(stub):
@@ -183,3 +184,66 @@ async def test_instruction_is_withdrawn_when_it_no_longer_applies(stub):
     assert latest.answer == "no"
     await run(connection_id, "e3")
     assert len(await rows(Outbox, Outbox.routing_key == "crew.deplane")) == 2, "a withdrawal is sent once"
+
+
+async def test_hold_has_a_length_worked_out_in_code(stub):
+    connection_id = await make_connection()  # buffer -6
+    for seat in ("9C", "12A", "14C", "18E", "20A"):
+        await add_passenger(connection_id, seat)
+    await run(connection_id, "e1")
+    hold = (await rows(Decision, Decision.type == "ops_action"))[0]
+    assert hold.payload["message"]["hold_min"] == 15, "aims for a 10 minute buffer, capped at 15"
+    assert hold.payload["title"].endswith("for 15 min") and hold.payload["message"]["flight_id"]
+
+
+async def test_dismissed_suggestion_is_not_raised_again_on_the_same_data(stub):
+    connection_id = await make_connection()
+    await add_passenger(connection_id)
+    await run(connection_id, "e1")
+    async with db.session() as s:
+        hold = (await s.execute(select(Decision).where(Decision.type == "ops_action"))).scalar_one()
+        hold.status = "dismissed"
+        await s.commit()
+    await run(connection_id, "e2")  # re-scored after the dismissal, same flight data
+    assert len(await rows(Decision, Decision.type == "ops_action")) == 1, "ops said no: do not ask again"
+    async with db.session() as s:
+        connection = await s.get(Connection, connection_id)
+        inbound = await s.get(FlightInstance, connection.inbound_id)
+        inbound.version += 1
+        await s.commit()
+    await run(connection_id, "e3")  # the flight changed: worth asking again
+    assert len(await rows(Decision, Decision.type == "ops_action")) == 2
+
+
+async def test_passenger_questions_run_concurrently_and_are_counted(stub):
+    import asyncio
+
+    running = peak = 0
+    original = stub.ask_passenger
+
+    async def slow(state):
+        nonlocal running, peak
+        running += 1
+        peak = max(peak, running)
+        await asyncio.sleep(0.02)
+        running -= 1
+        return await original(state)
+
+    stub.ask_passenger = slow
+    connection_id = await make_connection()
+    for seat in ("9C", "12A", "14C", "18E", "20A", "22D"):
+        await add_passenger(connection_id, seat)
+    result = await run(connection_id, "e1")
+    assert peak > 1, "the six passenger calls overlap instead of queueing"
+    assert (result.passengers, result.model_calls) == (6, 8), "one risk call, one ops call, six passenger calls"
+
+
+def test_fake_model_follows_the_policy():
+    from segue.model import client as real
+    from segue.model import state as st
+
+    assert real._fake_risk(st.risk_state(margin="small", terminal_change=True, queue_trend="steady", inbound_status="x", outbound_status="x", airport="DXB")).answer == "at_risk"
+    assert real._fake_ops(st.ops_state(risk_level="at_risk", protected_passengers=6, self_transfer_passengers=2, outbound_status="x")).answer == "hold_flight"
+    assert real._fake_ops(st.ops_state(risk_level="lost", protected_passengers=0, self_transfer_passengers=2, outbound_status="x")).answer == "notify_only"
+    answers = real._fake_passenger(st.passenger_state(risk_level="lost", booking="separate_tickets", declared_assistance=None, terminal_change=False))
+    assert answers["message_template"].answer == "self_transfer_missed" and answers["crew_priority_deplane"].answer == "no"

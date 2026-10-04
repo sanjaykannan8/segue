@@ -1,4 +1,4 @@
-import type { Flight, Purpose, RiskLevel } from "./api";
+import type { Flight, RiskLevel } from "./api";
 
 export const RISK_LEVELS: RiskLevel[] = ["safe", "tight", "at_risk", "lost"];
 
@@ -16,20 +16,7 @@ export function asRiskLevel(level: string | null | undefined): RiskLevel | null 
   return level && (RISK_LEVELS as string[]).includes(level) ? (level as RiskLevel) : null;
 }
 
-export const PURPOSE_LABEL: Record<Purpose, string> = {
-  tracking: "Track my connection",
-  notifications: "Send me updates",
-  assistance: "Arrange assistance",
-  authority_share: "Share with the airport for fast-track",
-};
-
-export const ASSISTANCE_OPTIONS = [
-  { value: "none", label: "None" },
-  { value: "wheelchair", label: "Wheelchair" },
-  { value: "buggy", label: "Buggy" },
-  { value: "escort", label: "Escort" },
-  { value: "step_free_route", label: "Step-free route" },
-];
+export const ASSISTANCE_TYPES = ["none", "wheelchair", "buggy", "escort", "step_free_route"] as const;
 
 /** "step_free_route" → "Step-free route", "hold_flight" → "Hold flight" */
 export function humanize(value: string | null | undefined): string {

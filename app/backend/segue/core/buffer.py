@@ -31,10 +31,12 @@ DEFAULT = {
 }
 
 
-@lru_cache
+@lru_cache(maxsize=64)
 def airport_config(airport: str) -> dict:
     """config/airports/<IATA>.yaml over the defaults. Unknown airports use the defaults."""
     config = dict(DEFAULT)
+    if not re.fullmatch(r"[A-Za-z]{3,4}", airport or ""):
+        return config
     path = Path(get_settings().airports_dir) / f"{airport.upper()}.yaml"
     if path.exists():
         config.update(yaml.safe_load(path.read_text()) or {})
@@ -49,23 +51,62 @@ class Buffer:
     steps: tuple[tuple[str, str, int], ...]  # (id, label, minutes)
 
 
-def _walk(config: dict, arr_terminal: str | None, dep_terminal: str | None) -> int:
+@dataclass(frozen=True)
+class Transfer:
+    """Getting from the arrival gate to the departure gate."""
+    minutes: int
+    how: str                 # in words, e.g. "Airport train between the A and B gates"
+    origin: str | None       # concourse letter, when known
+    destination: str | None
+    sourced: bool            # True: an airline or the airport published the figure. False: our estimate
+
+
+def concourse(config: dict, gate: str | None, terminal: str | None) -> str | None:
+    """The concourse a flight uses: from the gate's letter, else from a terminal that has only one."""
+    known = config.get("concourses") or {}
+    if gate and gate.strip()[:1].upper() in known:
+        return gate.strip()[:1].upper()
+    return (config.get("terminal_concourse") or {}).get(str(terminal).lstrip("Tt")) if terminal else None
+
+
+def transfer(config: dict, arr_terminal: str | None, dep_terminal: str | None, arr_gate: str | None = None, dep_gate: str | None = None) -> Transfer:
+    """Minutes from arrival gate to departure gate. Airports with a `transfer` table (DXB) use the
+    concourse pair; others fall back to same-terminal and other-terminal defaults."""
+    table = config.get("transfer")
+    if table:
+        origin, destination = concourse(config, arr_gate, arr_terminal), concourse(config, dep_gate, dep_terminal)
+        if origin and destination:
+            entry = table.get(f"{origin}-{destination}") or table.get(f"{destination}-{origin}")
+            if entry:
+                return Transfer(int(entry["min"]), entry["how"], origin, destination, bool(entry.get("sourced")))
+        return Transfer(int(config.get("unknown_min", config["walk_other_terminal_min"])), "Walk or ride to the departure gate (gate not yet known)", origin, destination, False)
     if arr_terminal and dep_terminal:
         specific = config["walk"].get(f"{arr_terminal}>{dep_terminal}")
         if specific is not None:
-            return int(specific)
+            return Transfer(int(specific), "Walk to the gate", None, None, False)
         if arr_terminal != dep_terminal:
-            return int(config["walk_other_terminal_min"])
-    return int(config["walk_same_terminal_min"])
+            return Transfer(int(config["walk_other_terminal_min"]), "Go to the other terminal", None, None, False)
+    return Transfer(int(config["walk_same_terminal_min"]), "Walk to the gate", None, None, False)
 
 
-def connection_buffer(airport: str, inbound_arrival: datetime, outbound_departure: datetime, arr_terminal: str | None, dep_terminal: str | None) -> Buffer:
+def connection_buffer(airport: str, inbound_arrival: datetime, outbound_departure: datetime, arr_terminal: str | None, dep_terminal: str | None, arr_gate: str | None = None, dep_gate: str | None = None) -> Buffer:
     config = airport_config(airport)
     left = round((outbound_departure - inbound_arrival).total_seconds() / 60) - int(config["gate_close_min"])
-    deplane, walk, queue = int(config["deplane_min"]), _walk(config, arr_terminal, dep_terminal), int(config["queue_min"])
-    needed = deplane + walk + queue
-    steps = (("deplane", "Leave the aircraft", deplane), ("walk", "Walk to the gate", walk), ("queue", "Transfer security", queue), ("gate", "Board", 0))
+    route = transfer(config, arr_terminal, dep_terminal, arr_gate, dep_gate)
+    deplane, queue = int(config["deplane_min"]), int(config["queue_min"])
+    needed = deplane + route.minutes + queue
+    steps = (("deplane", "Leave the aircraft", deplane), ("walk", route.how, route.minutes), ("queue", "Transfer security", queue), ("gate", "Board", 0))
     return Buffer(left, needed, left - needed, steps)
+
+
+def changes_terminal(airport: str, arr_terminal: str | None, dep_terminal: str | None, arr_gate: str | None, dep_gate: str | None) -> bool:
+    """True when the transfer leaves the arrival terminal (a bus or a train to another terminal)."""
+    config = airport_config(airport)
+    known = config.get("concourses") or {}
+    origin, destination = concourse(config, arr_gate, arr_terminal), concourse(config, dep_gate, dep_terminal)
+    if origin in known and destination in known:
+        return known[origin]["terminal"] != known[destination]["terminal"]
+    return bool(arr_terminal and dep_terminal and str(arr_terminal) != str(dep_terminal))
 
 
 def seat_row(seat: str | None) -> int | None:

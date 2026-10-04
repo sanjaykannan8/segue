@@ -5,11 +5,13 @@ from typing import Protocol
 
 import httpx
 
-from ..core.breaker import Breaker
+from ..core.breaker import Breaker, BreakerOpen
 from ..core.bus import redis
 from ..core.settings import get_settings
 
-BUDGET_KEY = "airlabs:used"
+def budget_key() -> str:
+    """One counter per calendar month, which is how the plan's allowance is counted."""
+    return "airlabs:used:" + datetime.now(timezone.utc).strftime("%Y-%m")
 
 
 class BudgetSpent(Exception):
@@ -27,7 +29,7 @@ def _utc(value: str | None) -> datetime | None:
 
 
 async def budget() -> dict:
-    return {"used": int(await redis().get(BUDGET_KEY) or 0), "budget": get_settings().airlabs_budget}
+    return {"used": int(await redis().get(budget_key()) or 0), "budget": get_settings().airlabs_budget}
 
 
 def normalize(data: dict, fallback_iata: str = "") -> dict:
@@ -58,17 +60,21 @@ class AirLabs:
         s = get_settings()
         if not s.airlabs_api_key:
             raise RuntimeError("AIRLABS_API_KEY is not set")
-        if int(await redis().get(BUDGET_KEY) or 0) >= s.airlabs_budget:
+        breaker = Breaker(redis(), "airlabs")
+        if await breaker.is_open():
+            raise BreakerOpen("airlabs")
+        # Count first, in one atomic step, so requests arriving together cannot pass the ceiling.
+        if await redis().incr(budget_key()) > s.airlabs_budget:
+            await redis().decr(budget_key())
             raise BudgetSpent("AirLabs query budget is spent")
 
         async def call() -> dict:
             async with httpx.AsyncClient(timeout=10.0) as http:
                 response = await http.get(f"{self.BASE}/{path}", params={**params, "api_key": s.airlabs_api_key})
-                await redis().incr(BUDGET_KEY)
                 response.raise_for_status()
                 return response.json()
 
-        return await Breaker(redis(), "airlabs").call(call)
+        return await breaker.call(call)
 
     async def fetch(self, flight_iata: str) -> dict | None:
         """Live status of one flight, or None when AirLabs has no such flight right now."""

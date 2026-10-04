@@ -2,150 +2,185 @@
 
 import { useCallback, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Accessibility, ArrowRight, Bell } from "lucide-react";
+import { Accessibility, ArrowRight, Bell, ExternalLink } from "lucide-react";
 import { Alert } from "@/components/arc/alert/alert";
 import { EmptyState } from "@/components/arc/empty-state/empty-state";
 import { Gauge } from "@/components/arc/gauge/gauge";
 import { Skeleton } from "@/components/arc/skeleton/skeleton";
 import { Stepper } from "@/components/arc/stepper/stepper";
-import { Timeline, type TimelineEvent } from "@/components/arc/timeline/timeline";
-import { UsageMeter } from "@/components/arc/usage-meter/usage-meter";
 import { DeviceLinkButton } from "@/components/segue/device-link";
+import { EmailVerify } from "@/components/segue/email-verify";
 import { HeaderLink, PassengerShell } from "@/components/segue/passenger-shell";
 import { useToast } from "@/components/segue/toasts";
-import { ErrorState, Fact, Mascot, Panel, PanelHeader, RiskBadge, RiskIcon, StaleNote, type MascotPose } from "@/components/segue/ui";
-import { api, isStatus, streams, useEventStream, useResource, type ConnectionView, type FeedItem, type Flight, type RiskLevel } from "@/lib/api";
-import { asRiskLevel, flightLabel, flightStatusLabel, formatAge, formatBuffer, formatTime, humanize, RISK_LABEL } from "@/lib/format";
-import { localTimeZone, useNow } from "@/lib/hooks";
+import { ErrorState, Fact, LiveRegion, Ltr, Mascot, Panel, PanelHeader, RiskBadge, RiskIcon, StaleNote, type MascotPose } from "@/components/segue/ui";
+import { api, isStatus, streams, useEventStream, useResource, type AssistanceType, type ConnectionView, type FeedItem, type Flight, type RiskLevel } from "@/lib/api";
+import { asRiskLevel, ASSISTANCE_TYPES, flightLabel } from "@/lib/format";
+import { useNow } from "@/lib/hooks";
+import { useFormat, useT } from "@/lib/i18n";
 import styles from "../passenger.module.css";
 
-const HEADLINE: Record<RiskLevel, { text: string; pose: MascotPose }> = {
-  safe: { text: "You have time to make it.", pose: "calm" },
-  tight: { text: "It's tight. Keep moving.", pose: "look_right" },
-  at_risk: { text: "Hurry. Go straight to your gate.", pose: "alert" },
-  lost: { text: "This connection can't be made.", pose: "dizzy" },
-};
+const POSE: Record<RiskLevel, MascotPose> = { safe: "calm", tight: "look_right", at_risk: "alert", lost: "dizzy" };
 const GAUGE_TONE = { safe: "success", tight: "warning", at_risk: "warning", lost: "danger" } as const;
+const GUIDE_URL = "https://dubaiairports.ae/information/transfers";
 
 function isFeedItem(value: unknown): value is FeedItem {
   return !!value && typeof value === "object" && typeof (value as FeedItem).id === "string" && typeof (value as FeedItem).title === "string";
 }
 
 function FlightBlock({ kind, flight }: { kind: "inbound" | "outbound"; flight: Flight }) {
+  const t = useT();
+  const format = useFormat();
   const inbound = kind === "inbound";
   const time = inbound ? flight.est_arr ?? flight.sched_arr : flight.est_dep ?? flight.sched_dep;
   const gate = inbound ? flight.arr_gate : flight.dep_gate;
   const terminal = inbound ? flight.arr_terminal : flight.dep_terminal;
   return (
-    <article className={styles.flight} aria-label={`${inbound ? "Inbound" : "Outbound"} flight ${flightLabel(flight.flight_iata)}`}>
+    <div className={styles.flight}>
       <div className={styles.flightTop}>
         <div>
-          <p className={styles.flightKind}>{inbound ? "Inbound" : "Outbound"}</p>
-          <p className={styles.flightNo}>{flightLabel(flight.flight_iata)}</p>
+          <p className={styles.flightKind}>{t(inbound ? "trip.inbound" : "trip.outbound")}</p>
+          <h3 className={styles.flightNo}><Ltr>{flightLabel(flight.flight_iata)}</Ltr></h3>
         </div>
         <p className={styles.route}>
-          <span>{flight.origin}</span>
-          <ArrowRight width={16} height={16} aria-label="to" />
-          <span>{flight.dest}</span>
+          <Ltr>{flight.origin} <ArrowRight width={16} height={16} aria-hidden="true" /> {flight.dest}</Ltr>
         </p>
       </div>
       <dl className={styles.flightFacts}>
-        <Fact label={inbound ? "Arrives (est.)" : "Departs (est.)"}>{formatTime(time)}</Fact>
-        <Fact label="Gate">{gate ?? "Not yet"}</Fact>
-        <Fact label="Terminal">{terminal ?? "Not yet"}</Fact>
+        <Fact label={t(inbound ? "trip.arrivesEst" : "trip.departsEst")}><Ltr>{format.time(time)}</Ltr></Fact>
+        <Fact label={t("trip.gate")}>{gate ? <Ltr>{gate}</Ltr> : t("common.notYet")}</Fact>
+        <Fact label={t("trip.terminal")}>{terminal ? <Ltr>{terminal}</Ltr> : t("common.notYet")}</Fact>
       </dl>
-      <p className={styles.updated}>{flightStatusLabel(flight)} · updated {formatAge(flight.age_sec)}</p>
-    </article>
+      <p className={styles.updated}>{format.flightStatus(flight)} · {t("trip.updated", { age: format.age(flight.age_sec) })}</p>
+    </div>
+  );
+}
+
+/** The time you need against the time you have, as one plain bar with its numbers written out. */
+function NeedHave({ need, have }: { need: number; have: number }) {
+  const t = useT();
+  const spare = have - need;
+  const share = Math.min(100, Math.max(0, Math.round((need / Math.max(have, need, 1)) * 100)));
+  return (
+    <div className={styles.needHave}>
+      <p className={styles.needText}>{t("trip.needHave", { need, have })}</p>
+      <div className={styles.needTrack} aria-hidden="true"><span className={styles.needFill} style={{ inlineSize: `${share}%` }} /></div>
+      <p className={styles.needSpare}>{spare >= 0 ? t("trip.spare", { n: spare }) : t("trip.short", { n: -spare })}</p>
+    </div>
   );
 }
 
 function StatusCard({ view }: { view: ConnectionView }) {
+  const t = useT();
+  const format = useFormat();
   const risk = view.risk;
   const level = risk ? asRiskLevel(risk.level) : null;
   const buffer = view.my_buffer_min ?? risk?.buffer_min ?? null;
-  const steps = useMemo(() => view.steps.map((step) => ({ id: step.id, label: step.label, description: `${Math.round(step.minutes)} min` })), [view.steps]);
+  const steps = useMemo(() => view.steps.map((step) => ({ id: step.id, label: step.label, description: format.minutes(step.minutes) })), [view.steps, format]);
   // The contract gives the steps but not the passenger's position, so progress follows the inbound flight: once it has landed, deplaning is under way.
   const currentStep = view.inbound.status === "landed" ? Math.min(1, steps.length) : 0;
   const left = risk ? Math.round(risk.left_min) : 0;
   const needed = risk ? Math.round(risk.needed_min) : 0;
+  const assistance = view.assistance?.type;
 
   return (
     <>
-      <section className={styles.statusHero} data-risk={level ?? "unknown"} aria-label="Connection status">
+      <section className={styles.statusHero} data-risk={level ?? "unknown"} aria-labelledby="status-heading">
         {risk && level ? (
           <>
             <div className={styles.heroTop}>
-              <Mascot pose={HEADLINE[level].pose} size={76} />
+              <Mascot pose={POSE[level]} size={76} />
               <div className={styles.heroCopy}>
                 <RiskBadge level={risk.level} />
-                <h2 className={styles.headline}>{HEADLINE[level].text}</h2>
-                <p className={styles.needs}>Connecting at {view.airport}{buffer !== null ? <> · your buffer is <strong>{formatBuffer(buffer)}</strong></> : null}</p>
+                <h2 id="status-heading" className={styles.headline}>{t(`trip.head.${level}`)}</h2>
+                <p className={styles.needs}>
+                  {t("trip.connectingAt", { airport: view.airport })}
+                  {buffer !== null ? <> · {t("trip.buffer", { buffer: format.buffer(buffer) })}</> : null}
+                </p>
               </div>
             </div>
             <div className={styles.gaugeRow}>
-              <Gauge
-                value={left}
-                min={0}
-                max={Math.max(60, Math.ceil(Math.max(risk.left_min, risk.needed_min * 1.5) / 30) * 30)}
-                unit="min"
-                label="Minutes to connect"
-                tone={GAUGE_TONE[level]}
-                thresholds={[{ from: Number.NEGATIVE_INFINITY, tone: GAUGE_TONE[level], label: RISK_LABEL[level] }]}
-              />
-              {left > 0 ? (
-                <div className={styles.meter}>
-                  <UsageMeter
-                    label="Time you need, out of the time you have"
-                    segments={[{ id: "needed", label: "Needed", value: needed }]}
-                    limit={left}
-                    unit="min"
-                    decimals={0}
-                    freeLabel="Spare"
-                    overLabel="Short by"
-                    warnAt={1}
-                  />
-                </div>
-              ) : (
-                <p className={styles.needs}>Needs {needed} min. There is no time left for this connection.</p>
-              )}
+              {/* The ring counts and sweeps left to right in every language. */}
+              <div dir="ltr">
+                <Gauge
+                  value={left}
+                  min={0}
+                  max={Math.max(60, Math.ceil(Math.max(risk.left_min, risk.needed_min * 1.5) / 30) * 30)}
+                  unit={t("common.min", { n: "" }).trim()}
+                  label={t("trip.gaugeLabel")}
+                  tone={GAUGE_TONE[level]}
+                  thresholds={[{ from: Number.NEGATIVE_INFINITY, tone: GAUGE_TONE[level], label: t(`risk.${level}`) }]}
+                />
+              </div>
+              {left > 0 ? <NeedHave need={needed} have={left} /> : <p className={styles.needs}>{t("trip.noTime", { need: needed })}</p>}
             </div>
+            {/* A change of status is announced once, politely, without moving focus. */}
+            <LiveRegion>{t("trip.announce", { level: t(`risk.${level}`), headline: t(`trip.head.${level}`) })}</LiveRegion>
           </>
         ) : (
-          <EmptyState
-            icon={<Mascot pose="look_right" size={40} />}
-            title="Scoring your connection…"
-            description={`This takes a moment. The status for your connection at ${view.airport} appears here as soon as it's ready.`}
-            label="Connection not scored yet"
-          />
+          <>
+            <h2 id="status-heading" className="sr-only">{t("trip.statusLabel")}</h2>
+            <EmptyState icon={<Mascot pose="look_right" size={40} />} title={t("trip.scoringTitle")} description={t("trip.scoringBody")} />
+          </>
         )}
       </section>
 
-      <Panel label="Your flights">
-        <PanelHeader title="Your flights" hint={view.seat ? `Seat ${view.seat} on the first flight` : undefined} />
+      {view.booking === "separate_tickets" ? (
+        <Alert tone="info" title={t("trip.separateTitle")}>{t("trip.separateBody", { flight: `⁦${flightLabel(view.outbound.flight_iata)}⁩` })}</Alert>
+      ) : null}
+
+      <Panel>
+        <PanelHeader title={t("trip.flights")} hint={view.seat ? t("trip.seat", { seat: view.seat }) : undefined} />
         <div className={styles.flights}>
           <FlightBlock kind="inbound" flight={view.inbound} />
           <FlightBlock kind="outbound" flight={view.outbound} />
         </div>
-        {view.assistance && view.assistance.type !== "none" ? (
+        {assistance && assistance !== "none" ? (
           <p className={styles.assist}>
             <Accessibility width={20} height={20} aria-hidden="true" />
-            <span>Assistance requested: <strong>{humanize(view.assistance.type)}</strong>. Shared only with ops, crew and ground staff.</span>
+            <span>{t("trip.assistance", { type: (ASSISTANCE_TYPES as readonly string[]).includes(assistance) ? t(`assist.${assistance as AssistanceType}`) : assistance })}</span>
           </p>
         ) : null}
       </Panel>
 
       {steps.length ? (
-        <Panel label="Your steps">
-          <PanelHeader title="Your steps" hint={risk ? `About ${needed} min in total` : undefined} />
-          <Stepper steps={steps} current={currentStep} orientation="vertical" label="Steps to your next gate" />
+        <Panel>
+          <PanelHeader title={t("trip.steps")} hint={risk ? t("trip.stepsTotal", { n: needed }) : undefined} />
+          <Stepper steps={steps} current={currentStep} orientation="vertical" label={t("trip.stepsLabel")} completeLabel={t("stepper.done")} />
+          <a className={styles.guide} href={GUIDE_URL} target="_blank" rel="noopener">
+            <ExternalLink width={16} height={16} aria-hidden="true" />
+            <span>{t("trip.guide")} <span className={styles.guideNote}>{t("trip.newTab")}</span></span>
+          </a>
         </Panel>
       ) : null}
     </>
   );
 }
 
+function Messages({ items, now }: { items: FeedItem[]; now: number }) {
+  const format = useFormat();
+  return (
+    <ol className={styles.feed}>
+      {items.map((item) => {
+        const level = asRiskLevel(item.level);
+        return (
+          <li key={item.id} className={styles.feedItem} data-risk={level ?? undefined}>
+            <span className={styles.feedIcon} aria-hidden="true">{level ? <RiskIcon level={level} size={16} /> : <Bell width={16} height={16} />}</span>
+            <div className={styles.feedCopy}>
+              {/* Messages arrive translated from the API and are shown as given. */}
+              <p className={styles.feedTitle}>{item.title}</p>
+              <p className={styles.feedBody}>{item.body}</p>
+              <time className={styles.feedTime} dateTime={item.created_at}>{format.ageSince(item.created_at, now)} · <Ltr>{format.time(item.created_at)}</Ltr></time>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 export default function TripPage() {
   const router = useRouter();
+  const t = useT();
   const notify = useToast();
   const now = useNow();
   const connection = useResource(api.myConnection, { pollMs: 60_000 });
@@ -166,65 +201,57 @@ export default function TripPage() {
     const timer = setInterval(() => { void reloadConnection(); }, 2000);
     return () => clearInterval(timer);
   }, [unscored, reloadConnection]);
+
   const setFeed = feed.setData;
   const onConnection = useCallback(() => { void reloadConnection(); }, [reloadConnection]);
   const onFeed = useCallback((data: unknown) => {
     if (!isFeedItem(data)) return;
     setFeed((current) => [data, ...(current ?? []).filter((item) => item.id !== data.id)]);
+    // The toast is a polite live region, so a new message is read out without taking focus.
     notify(data.title, data.body);
   }, [notify, setFeed]);
   const stream = useEventStream(noSession || noTrip ? null : streams.me, { connection: onConnection, feed: onFeed });
 
-  const events = useMemo<TimelineEvent[]>(() => (feed.data ?? []).map((item) => {
-    const level = asRiskLevel(item.level);
-    return {
-      id: item.id,
-      at: item.created_at,
-      title: item.title,
-      meta: item.body,
-      tone: level === "safe" ? "success" : level === "lost" ? "danger" : "neutral",
-      icon: level ? <span data-risk={level} style={{ display: "grid", color: "var(--risk-ink)" }}><RiskIcon level={level} /></span> : <Bell aria-hidden="true" />,
-    };
-  }), [feed.data]);
-
   const view = connection.data;
   const redirecting = noSession || noTrip;
+  const title = t("title.trip");
 
   return (
-    <PassengerShell title="Your connection" action={<HeaderLink href="/privacy">Your data</HeaderLink>}>
-      {view?.degraded ? (
-        <Alert tone="info" title="Live decisions are paused.">Status is from fixed rules.</Alert>
-      ) : null}
-
+    <PassengerShell pageTitle={title} title={title} action={<HeaderLink href="/privacy">{t("shell.yourData")}</HeaderLink>}>
+      {view?.degraded ? <Alert tone="info" title={t("trip.degradedTitle")}>{t("trip.degradedBody")}</Alert> : null}
       {view ? <StaleNote error={connection.error} onRetry={() => void connection.reload()} /> : null}
 
       {view ? <StatusCard view={view} /> : connection.loading || redirecting ? (
-        <Panel label="Connection status"><Skeleton label="Loading your connection" lines={6} avatar /></Panel>
+        <Panel><Skeleton label={t("trip.loading")} lines={6} avatar /></Panel>
       ) : (
-        <ErrorState error={connection.error} onRetry={() => void connection.reload()} title="Your connection didn't load" />
+        <ErrorState error={connection.error} onRetry={() => void connection.reload()} title={t("trip.error")} />
       )}
 
-      {view?.booking === "separate_tickets" ? (
-        <Alert tone="info" title="Separate tickets">Collect your bag and check in again for {flightLabel(view.outbound.flight_iata)}. The airline will not rebook you automatically.</Alert>
-      ) : null}
+      <EmailCheck />
 
       {view ? <div className={styles.quietRow}><DeviceLinkButton variant="ghost" /></div> : null}
 
-      <Panel label="Messages">
+      <Panel>
         <div className={styles.feedHead}>
           <Mascot pose="mail" size={40} />
           <div>
-            <h2>Messages</h2>
-            <p className={styles.live} role="status">{stream === "open" ? "Live updates are on" : "Reconnecting to live updates…"}</p>
+            <h2>{t("trip.messages")}</h2>
+            <p className={styles.live} role="status">{t(stream === "open" ? "trip.liveOn" : "trip.liveOff")}</p>
           </div>
         </div>
-        {feed.loading ? <Skeleton label="Loading messages" lines={3} /> : null}
-        {!feed.loading && !feed.data ? <ErrorState compact error={feed.error} onRetry={() => void feed.reload()} title="Messages didn't load" /> : null}
+        {feed.loading ? <Skeleton label={t("trip.messagesLoading")} lines={3} /> : null}
+        {!feed.loading && !feed.data ? <ErrorState compact error={feed.error} onRetry={() => void feed.reload()} title={t("trip.messagesError")} /> : null}
         {feed.data && feed.data.length === 0 ? (
-          <EmptyState icon={<Mascot pose="sleepy" size={40} />} title="No messages yet" description="Updates about your connection will show up here." label="No messages" />
+          <EmptyState icon={<Mascot pose="sleepy" size={40} />} title={t("trip.noMessages")} description={t("trip.noMessagesBody")} />
         ) : null}
-        {feed.data && feed.data.length > 0 ? <Timeline events={events} now={now} label="Messages about your connection" timeZone={localTimeZone()} headingLevel={3} /> : null}
+        {feed.data && feed.data.length > 0 ? <Messages items={feed.data} now={now} /> : null}
       </Panel>
     </PassengerShell>
   );
+}
+
+/** Asks for the emailed code while the address is unconfirmed; nothing is shown otherwise. */
+function EmailCheck() {
+  const me = useResource(api.me);
+  return <EmailVerify me={me.data} onChange={() => void me.reload()} />;
 }

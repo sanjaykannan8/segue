@@ -5,7 +5,7 @@ from datetime import timedelta, timezone
 from typing import Literal
 
 import aio_pika
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import Query, APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -54,7 +54,7 @@ async def _check(name: str, probe) -> tuple[str, dict]:
         detail = await asyncio.wait_for(probe(), timeout=4)
         return name, {"ok": True, "detail": detail or "ok"}
     except Exception as error:
-        return name, {"ok": False, "detail": type(error).__name__ + (f": {error}" if str(error) else "")}
+        return name, {"ok": False, "detail": type(error).__name__}
 
 
 async def _model_health() -> str:
@@ -202,7 +202,7 @@ async def replay(body: ReplayIn, request: Request, user: dict = admin, db: Async
 
 
 @router.get("/audit")
-async def audit_log(limit: int = 100, user: dict = admin, db: AsyncSession = Depends(get_db)) -> list[dict]:
+async def audit_log(limit: int = Query(100, ge=1, le=500), user: dict = admin, db: AsyncSession = Depends(get_db)) -> list[dict]:
     rows = (await db.execute(select(AuditLog).order_by(AuditLog.id.desc()).limit(min(limit, 500)))).scalars()
     return [{"at": r.at.isoformat(), "actor": r.actor, "role": r.role, "action": r.action, "object": r.object} for r in rows]
 
@@ -254,7 +254,7 @@ async def demo_run(request: Request, user: dict = admin, db: AsyncSession = Depe
     tag = uid()[:3].upper()
     arrival = now().replace(second=0, microsecond=0) + timedelta(hours=2)
     inbound, _ = await flights.upsert(db, {"flight_iata": f"SG{tag}1", "date": arrival.strftime("%Y-%m-%d"), "origin": "DEL", "dest": "DXB", "sched_dep": arrival - timedelta(hours=3), "est_dep": arrival - timedelta(hours=3), "sched_arr": arrival, "est_arr": arrival, "arr_terminal": "3", "arr_gate": "C22", "status": "en-route"}, "manual")
-    departure = arrival + timedelta(minutes=75)
+    departure = arrival + timedelta(minutes=95)  # C gates to B gates takes 30 min at DXB: 95 leaves a comfortable 27
     outbound, _ = await flights.upsert(db, {"flight_iata": f"SG{tag}2", "date": departure.strftime("%Y-%m-%d"), "origin": "DXB", "dest": "LHR", "sched_dep": departure, "est_dep": departure, "sched_arr": departure + timedelta(hours=7), "est_arr": departure + timedelta(hours=7), "dep_terminal": "3", "dep_gate": "B14", "status": "scheduled"}, "manual")
     await db.flush()
     connection = Connection(id=uid(), inbound_id=inbound.id, outbound_id=outbound.id, airport="DXB")
@@ -307,7 +307,7 @@ async def trace_log(limit: int = 300, user: dict = admin) -> list[dict]:
 
 @router.get("/trace/stream")
 async def trace_stream(user: dict = admin):
-    return sse(tracing.CHANNEL)
+    return await sse(tracing.CHANNEL, user["id"], lambda: staff_alive(user))
 
 
 LEVEL_WORD = {"safe": "Safe", "tight": "Tight", "at_risk": "At Risk", "lost": "Lost"}
@@ -339,7 +339,7 @@ async def demo_board(user: dict = admin, db: AsyncSession = Depends(get_db)) -> 
     inbound, outbound = await db.get(FlightInstance, connection.inbound_id), await db.get(FlightInstance, connection.outbound_id)
     aware = lambda v: v.replace(tzinfo=timezone.utc) if v and v.tzinfo is None else v
     arrival, departure = aware(inbound.est_arr or inbound.sched_arr), aware(outbound.est_dep or outbound.sched_dep)
-    base = buf.connection_buffer(connection.airport, arrival, departure, inbound.arr_terminal, outbound.dep_terminal)
+    base = buf.connection_buffer(connection.airport, arrival, departure, inbound.arr_terminal, outbound.dep_terminal, inbound.arr_gate, outbound.dep_gate)
     risk = await db.get(ConnectionRisk, (connection.id, f"{inbound.version}.{outbound.version}"))
     if risk is None:
         risk = (await db.execute(select(ConnectionRisk).where(ConnectionRisk.connection_id == connection.id).order_by(ConnectionRisk.computed_at.desc()).limit(1))).scalar_one_or_none()
@@ -406,6 +406,9 @@ async def demo_board(user: dict = admin, db: AsyncSession = Depends(get_db)) -> 
     if ops is not None:
         ops_state = {"pending": "It is waiting for an ops controller to approve.", "approved": f"Ops approved it ({ops['decided_by']}).", "dismissed": "Ops dismissed it.", "executed": "It ran by itself."}.get(ops["status"], "")
         story.append(f"Suggested to ops: {ops['title']}. Only the {protected} passengers on one booking count toward it. {ops_state}")
+    if outbound.est_dep and outbound.sched_dep and aware(outbound.est_dep) > aware(outbound.sched_dep):
+        held_min = round((aware(outbound.est_dep) - aware(outbound.sched_dep)).total_seconds() / 60)
+        story.append(f"{outbound.flight_iata} is now held {held_min} minutes. That went back through the system as a new event, so every passenger was re-scored and instructions that no longer apply were withdrawn.")
     told = sum(1 for p_ in passengers if p_["message"])
     waiting = sum(1 for p_ in passengers for line in p_["staff"] if line["state"] == "waiting")
     sent = sum(1 for p_ in passengers for line in p_["staff"] if line["state"] == "sent")

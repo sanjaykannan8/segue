@@ -36,6 +36,7 @@ class PassengerPII(Base):
     principal_id: Mapped[str] = mapped_column(ForeignKey("data_principal.id", ondelete="CASCADE"), primary_key=True)
     name_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
     phone_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
+    email_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
     language: Mapped[str] = mapped_column(String(8), default="en")
 
 

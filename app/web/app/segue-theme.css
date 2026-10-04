@@ -9,8 +9,9 @@
   --clear-sky: #47b5ff;
   --morning-mist: #dff6ff;
 
-  --font-display: var(--font-instrument), "Instrument Sans", system-ui, sans-serif;
-  --font-body: var(--font-instrument), "Instrument Sans", system-ui, sans-serif;
+  /* Instrument Sans has no Arabic, Devanagari or Tamil glyphs: those scripts fall through to system fonts. Nothing is loaded from a CDN. */
+  --font-display: var(--font-instrument), "Instrument Sans", "Noto Sans Arabic", "Noto Sans Devanagari", "Noto Sans Tamil", "Segoe UI", system-ui, sans-serif;
+  --font-body: var(--font-instrument), "Instrument Sans", "Noto Sans Arabic", "Noto Sans Devanagari", "Noto Sans Tamil", "Segoe UI", system-ui, sans-serif;
 
   --background: var(--morning-mist);
   --surface: #ffffff;
@@ -18,10 +19,10 @@
   --surface-muted: #f1f9fd;
   --foreground: var(--deep-ocean);
   --text-secondary: #3d5a6c;
-  --text-muted: #5b7485;
+  --text-muted: #4a6375; /* 5.6:1 on Morning Mist, 6.4:1 on white */
   --border: #d3e6f0;
   --border-subtle: #e6f1f7;
-  --border-strong: #9dbccd;
+  --border-strong: #6b8ca0; /* 3.5:1 on white: the edge of inputs, checkboxes and selects */
 
   --accent: var(--ocean-blue);
   --accent-strong: #0b4bb0;
@@ -31,8 +32,8 @@
 
   --control-on: var(--ocean-blue);
   --control-glyph: #ffffff;
-  --control-track: #c9dde8;
-  --control-track-hover: #b8d0de;
+  --control-track: #7391a4; /* 3.3:1 on white: an off switch is still visible as a control */
+  --control-track-hover: #5f7f93;
   --control-thumb-on: #ffffff;
   --control-fill: var(--ocean-blue);
 
@@ -90,4 +91,23 @@ time, td, dd, [role="meter"], [role="progressbar"] { font-variant-numeric: tabul
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; }
+}
+
+/* Form controls: a boundary that meets 3:1 (WCAG 1.4.11). */
+:root :is(input:not([type="checkbox"]):not([type="radio"]), textarea, [role="combobox"]) { border-color: var(--border-strong); }
+
+/* Right-to-left: directional icons mirror; flight routes, gates, numbers and times never do (they sit in <bdi dir="ltr">). */
+[dir="rtl"] .flip-rtl { transform: scaleX(-1); }
+bdi[dir="ltr"] { unicode-bidi: isolate; }
+/* Arabic, Devanagari and Tamil need more line height than Latin, and no negative tracking. */
+:root:is([lang="ar"], [lang="hi"], [lang="ta"]) { --tracking-display: 0; --tracking-body: 0; --leading-display: 1.35; --leading-body: 1.6; }
+:is([lang="ar"], [lang="hi"], [lang="ta"]) :is(h1, h2, h3, h4) { letter-spacing: 0; line-height: 1.35; }
+
+/* Small icon buttons get a 44px hit area without growing on screen. */
+[role="dialog"] button[aria-label] { position: relative; }
+[role="dialog"] button[aria-label]::after { content: ""; position: absolute; inset: -6px; }
+
+/* Reduced motion: no transitions or animations from stylesheets (Arc's scripted motion checks the same setting itself). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }

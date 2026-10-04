@@ -2,14 +2,16 @@
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.db import AssistanceNeed, AuditLog, Consent, DataPrincipal, Decision, FeedItem, Itinerary, PassengerPII, RightsRequest, now
+from ..core.bus import redis
+from ..core.db import AssistanceNeed, AuditLog, Consent, DataPrincipal, Decision, FeedItem, Itinerary, Outbox, PassengerPII, RightsRequest, now
+from ..core.settings import get_settings
 from ..core.util import decrypt
 
 PURPOSES = {
     "tracking": ("Track my connection", "Use my two flights and seat to score my connection and show it to me and to the airline's operations team.", True),
-    "notifications": ("Send me updates", "Show me alerts about my connection in this app.", False),
+    "notifications": ("Send me updates", "Show me alerts about my connection in this app, and email them to me if I give an address.", False),
     "assistance": ("Use my assistance need", "Use the assistance need I declare to arrange help. Shared only with operations, cabin crew and ground staff.", False),
-    "authority_share": ("Ask the airport for fast-track", "Share my name, flights and connection deadline with the airport or immigration authority to request a faster lane. They decide.", False),
+    "authority_share": ("Ask the airport for fast-track", "Share my masked name, flights and connection deadline with the airport authority to request a faster lane. They decide.", False),
 }
 
 
@@ -38,7 +40,7 @@ async def export(db: AsyncSession, principal_id: str) -> dict:
     iso = lambda v: v.isoformat() if v else None
     return {
         "principal_id": principal_id,
-        "profile": {"name": decrypt(pii.name_enc) if pii else None, "phone": decrypt(pii.phone_enc) if pii else None, "language": pii.language if pii else None},
+        "profile": {"name": decrypt(pii.name_enc) if pii else None, "phone": decrypt(pii.phone_enc) if pii else None, "email": decrypt(pii.email_enc) if pii else None, "language": pii.language if pii else None},
         "consents": [{"purpose": c.purpose, "notice_version": c.notice_version, "granted_at": iso(c.granted_at), "withdrawn_at": iso(c.withdrawn_at)} for c in consents],
         "itineraries": [{"id": i.id, "connection_id": i.connection_id, "seat": i.seat, "booking": i.booking, "created_at": iso(i.created_at), "delete_after": iso(i.expires_at), "assistance": assistance.get(i.id)} for i in itineraries],
         "decisions": [{"type": d.type, "answer": d.answer, "confidence": d.confidence, "gate": d.gate, "status": d.status, "created_at": iso(d.created_at)} for d in decisions],
@@ -53,10 +55,18 @@ async def erase_assistance(db: AsyncSession, principal_id: str) -> None:
     ids = list((await db.execute(select(Itinerary.id).where(Itinerary.principal_id == principal_id))).scalars())
     if ids:
         await db.execute(delete(AssistanceNeed).where(AssistanceNeed.itinerary_id.in_(ids)))
-    for item in (await db.execute(select(FeedItem).where(FeedItem.principal_id == principal_id, FeedItem.audience.in_(("crew", "ground"))))).scalars():
-        payload = dict(item.payload)
-        payload["assistance"] = None
-        item.payload = payload
+    # Staff rows never hold the need itself (it is read from the encrypted table when a list is opened),
+    # but a ground job may exist only because of it. Those jobs go now; the caller asks the engine to
+    # score the passenger again, which re-issues whatever still applies without the need.
+    connections = set((await db.execute(select(Itinerary.connection_id).where(Itinerary.principal_id == principal_id))).scalars())
+    if ids:
+        for item in (await db.execute(select(FeedItem).where(FeedItem.audience == "ground", FeedItem.connection_id.in_(connections)))).scalars():
+            if (item.payload or {}).get("itinerary_id") in ids:
+                await db.delete(item)
+        await db.execute(update(Decision).where(Decision.principal_id == principal_id, Decision.type == "ground_dispatch", Decision.status == "pending").values(status="expired"))
+        for row in (await db.execute(select(Outbox).where(Outbox.sent_at.is_(None), Outbox.routing_key == "ground.dispatch"))).scalars():
+            if (row.payload or {}).get("itinerary_id") in ids:
+                await db.delete(row)
 
 
 async def erase_principal(db: AsyncSession, principal_id: str, actor: str, reason: str) -> None:
@@ -67,9 +77,14 @@ async def erase_principal(db: AsyncSession, principal_id: str, actor: str, reaso
     await db.execute(delete(FeedItem).where(FeedItem.principal_id == principal_id))
     if ids:
         # Staff lists (crew, ground, authority) hold rows about the trip, keyed by itinerary: remove those too.
-        for item in (await db.execute(select(FeedItem).where(FeedItem.audience.in_(("crew", "ground", "authority"))))).scalars():
+        connections = set((await db.execute(select(Itinerary.connection_id).where(Itinerary.principal_id == principal_id))).scalars())
+        for item in (await db.execute(select(FeedItem).where(FeedItem.audience.in_(("crew", "ground", "authority")), FeedItem.connection_id.in_(connections)))).scalars():
             if (item.payload or {}).get("itinerary_id") in ids:
                 await db.delete(item)
+    # Messages not yet published are dropped; ones already in a queue are refused by the consumer, which finds no such person.
+    for row in (await db.execute(select(Outbox).where(Outbox.sent_at.is_(None)))).scalars():
+        if (row.payload or {}).get("principal_id") == principal_id or (row.payload or {}).get("itinerary_id") in ids:
+            await db.delete(row)
     # Anything still waiting for a person can no longer be acted on: close it, then strip the identifiers.
     await db.execute(update(Decision).where(Decision.principal_id == principal_id, Decision.status == "pending").values(status="expired"))
     await db.execute(update(Decision).where(Decision.principal_id == principal_id).values(principal_id=None, itinerary_id=None, payload={}))
@@ -79,3 +94,9 @@ async def erase_principal(db: AsyncSession, principal_id: str, actor: str, reaso
     await db.execute(delete(RightsRequest).where(RightsRequest.principal_id == principal_id))
     await db.execute(delete(DataPrincipal).where(DataPrincipal.id == principal_id))
     await audit(db, actor, "system" if actor == "retention" else "passenger", f"erase:{reason}", "principal")
+    try:
+        # Any copy of the session token stops working now, not when it expires.
+        await redis().set(f"gone:{principal_id}", "1", ex=get_settings().passenger_token_hours * 3600)
+        await redis().delete(f"emailok:{principal_id}", f"emailcode:{principal_id}")
+    except Exception:
+        pass

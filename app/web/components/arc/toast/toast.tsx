@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, typ
 import { AnimatePresence, animate, motion, useIsPresent, useMotionValue, useReducedMotion, type AnimationPlaybackControls, type HTMLMotionProps, type MotionProps, type PanInfo, type TargetAndTransition, type Transition, type Variants } from "motion/react";
 import { X } from "lucide-react";
 import { motionTokens } from "../lib/motion-tokens";
+import { arcLabels } from "../lib/labels";
 import styles from "./toast.module.css";
 export interface ToastProps { title: string; description?: string; open?: boolean; onOpenChange?: (open: boolean) => void; duration?: number; }
 
@@ -143,7 +144,7 @@ export default function Toast({ title, description, open = true, onOpenChange, d
         <button
           className={styles.close}
           type="button"
-          aria-label="Dismiss notification"
+          aria-label={arcLabels.dismissToast}
           onClick={() => dismiss(0)}
         >
           <X width={16} height={16} strokeWidth={2} aria-hidden="true" />

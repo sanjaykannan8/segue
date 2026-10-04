@@ -75,3 +75,37 @@ async def declare_topology(channel: aio_pika.abc.AbstractChannel) -> dict[str, a
 
 def retry_queue(name: str, delay_ms: int) -> str:
     return f"{name}.retry.{delay_ms}"
+
+
+METRIC_KEEP = 200_000
+
+
+async def metric(name: str, entry: dict) -> None:
+    """Timing records for the benchmark (scripts and segue/bench.py read them). Best-effort."""
+    try:
+        client = redis()
+        await client.lpush(f"metrics:{name}", json.dumps(entry))
+        await client.ltrim(f"metrics:{name}", 0, METRIC_KEEP - 1)
+    except Exception:
+        pass
+
+
+async def ensure_topics() -> None:
+    """Create the event topics with several partitions, so more than one engine can share the work.
+    Events are keyed by flight, so one flight's events stay in order on one partition."""
+    from aiokafka.admin import AIOKafkaAdminClient, NewPartitions, NewTopic
+
+    s = get_settings()
+    admin = AIOKafkaAdminClient(bootstrap_servers=s.kafka_brokers)
+    await admin.start()
+    try:
+        existing = await admin.describe_topics([TOPIC_ITINERARY, TOPIC_FLIGHT, TOPIC_DLQ])
+        have = {t["topic"]: len(t["partitions"]) for t in existing if not t.get("error_code")}
+        new = [NewTopic(name, num_partitions=1 if name == TOPIC_DLQ else s.topic_partitions, replication_factor=1) for name in (TOPIC_ITINERARY, TOPIC_FLIGHT, TOPIC_DLQ) if name not in have]
+        if new:
+            await admin.create_topics(new)
+        grow = {name: NewPartitions(total_count=s.topic_partitions) for name in (TOPIC_ITINERARY, TOPIC_FLIGHT) if 0 < have.get(name, 0) < s.topic_partitions}
+        if grow:
+            await admin.create_partitions(grow)
+    finally:
+        await admin.close()

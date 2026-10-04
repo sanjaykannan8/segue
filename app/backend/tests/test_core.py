@@ -7,7 +7,7 @@ from segue.core import buffer as buf
 from segue.core.breaker import Breaker, BreakerOpen
 from segue.core.bus import redis
 from segue.core.db import now
-from segue.core.util import decrypt, encrypt, hash_password, idempotency_key, risk_cache_key, verify_password
+from segue.core.util import decrypt, encrypt, hash_password, idempotency_key, mask_name, risk_cache_key, verify_password
 
 
 def test_buffer_arithmetic_is_exact():
@@ -81,3 +81,41 @@ async def test_breaker_can_be_forced_from_the_console():
     assert await breaker.is_open()
     await breaker.force("auto")
     assert (await breaker.snapshot())["state"] == "closed"
+
+
+def test_names_are_masked_for_staff():
+    assert mask_name("Priya Sharma") == "P***a S***a"
+    assert mask_name("Li") == "L***" and mask_name("Ali") == "A***" and mask_name("A") == "A***" and mask_name(None) is None
+    assert "riy" not in mask_name("Priya Sharma")
+
+
+def test_real_dxb_layout():
+    """The shipped DXB file: gates map to concourses, and each pair has a transfer time with its provenance."""
+    from pathlib import Path
+
+    import yaml
+
+    config = {**buf.DEFAULT, **yaml.safe_load((Path(__file__).parents[2] / "config" / "airports" / "DXB.yaml").read_text(encoding="utf-8"))}
+    assert buf.concourse(config, "C22", "3") == "C" and buf.concourse(config, None, "1") == "D" and buf.concourse(config, None, "3") is None
+    a_to_b = buf.transfer(config, "3", "3", "A12", "B14")
+    assert (a_to_b.minutes, a_to_b.sourced, a_to_b.origin, a_to_b.destination) == (30, True, "A", "B")
+    assert buf.transfer(config, "3", "3", "B14", "A12").minutes == 30, "same in both directions"
+    assert buf.transfer(config, "3", "3", "B7", "B30").minutes == 10
+    to_t2 = buf.transfer(config, "3", "2", "C10", "F4")
+    assert (to_t2.minutes, to_t2.sourced) == (60, False) and "Terminal 2" in to_t2.how
+    assert buf.transfer(config, "3", "1", "B5", None).destination == "D", "Terminal 1 has one concourse"
+    assert buf.transfer(config, "3", "3", None, "B14").minutes == 30, "gate not yet known: assume another concourse"
+    pairs = [f"{x}-{y}" for i, x in enumerate("ABCDF") for y in "ABCDF"[i:]]
+    assert sorted(config["transfer"]) == sorted(pairs), "every concourse pair has a value"
+    assert sum(1 for entry in config["transfer"].values() if entry["sourced"]) == 3
+
+
+def test_password_hashes_store_their_cost_and_old_ones_still_verify():
+    import hashlib, os
+    from base64 import b64encode
+    from segue.core.util import needs_rehash
+    new = hash_password("correct horse")
+    assert new.startswith("17$") and verify_password("correct horse", new) and not verify_password("wrong", new) and not needs_rehash(new)
+    salt = os.urandom(16)
+    old = b64encode(salt).decode() + "$" + b64encode(hashlib.scrypt(b"correct horse", salt=salt, n=2**14, r=8, p=1)).decode()
+    assert verify_password("correct horse", old) and needs_rehash(old)

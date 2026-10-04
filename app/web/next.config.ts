@@ -13,6 +13,30 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${process.env.API_INTERNAL_URL ?? "http://api:8000"}/:path*` }];
   },
+  async headers() {
+    const csp = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline'", // Next.js starts the page with small inline scripts
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob:",
+      "font-src 'self' data:",
+      "connect-src 'self'",
+      "worker-src 'self' blob:",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join("; ");
+    return [{
+      source: "/((?!api/).*)",
+      headers: [
+        { key: "Content-Security-Policy", value: csp },
+        { key: "X-Content-Type-Options", value: "nosniff" },
+        { key: "X-Frame-Options", value: "DENY" },
+        { key: "Referrer-Policy", value: "no-referrer" },
+        { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=()" }, // the boarding pass scanner uses the camera
+      ],
+    }];
+  },
   // Compression would buffer the live update stream (server-sent events).
   compress: false,
 };

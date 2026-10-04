@@ -50,15 +50,15 @@ RISK = Score(
 OPS = Choice(
     instructions={
         "question": "What should the airline ops controller do about this connection?",
-        "how": "Use risk_level first. Only protected_passengers (single ticket) count toward a hold or a rebooking. self_transfer_passengers booked separately: the airline owes them neither.",
+        "how": "Use risk_level first, then protected_group (how many passengers are on one booking). Passengers who booked separately never count toward a hold or a rebooking.",
     },
     criteria={
         "none": {"when": "risk_level is safe"},
-        "monitor": {"when": "risk_level is tight"},
-        "hold_flight": {"when": "risk_level is at_risk and protected_passengers is 5 or more: a short hold saves many people"},
-        "escort": {"when": "risk_level is at_risk and protected_passengers is between 1 and 4: ground help is enough"},
-        "rebook": {"when": "risk_level is lost and protected_passengers is 1 or more"},
-        "notify_only": {"when": "risk_level is at_risk or lost and protected_passengers is 0: everyone is on separate tickets, so warn them early but take no airline action"},
+        "monitor": {"when": "risk_level is tight, whatever protected_group is"},
+        "hold_flight": {"when": "risk_level is at_risk and protected_group is many: a short hold saves many people"},
+        "escort": {"when": "risk_level is at_risk and protected_group is few: ground help is enough"},
+        "rebook": {"when": "risk_level is lost and protected_group is few or many"},
+        "notify_only": {"when": "risk_level is at_risk or lost and protected_group is none: everyone is on separate tickets, so warn them early but take no airline action"},
     },
 )
 
@@ -121,22 +121,64 @@ def _normalize(answer, criteria_labels: list[str] | None = None) -> Answer:
     return Answer("yes" if yes >= 0.5 else "no", abs(yes - 0.5) * 2, {"yes": yes, "no": 1 - yes})
 
 
+def _fake_risk(state: dict) -> Answer:
+    """What the policy says, with no model call. For load tests of the pipeline itself."""
+    transfer = state["transfer"]
+    level = LEVELS[min(3, ["comfortable", "small", "negative_or_near_zero", "far_too_short"].index(transfer["time_margin"]) + (1 if transfer.get("aggravating_factors") else 0))]
+    return Answer(level, 0.9, {level: 0.9})
+
+
+def _fake_ops(state: dict) -> Answer:
+    level, group = state["risk_level"], state["protected_group"]
+    answer = "none" if level == "safe" else "monitor" if level == "tight" else "notify_only" if group == "none" else "rebook" if level == "lost" else "hold_flight" if group == "many" else "escort"
+    return Answer(answer, 0.9, {answer: 0.9})
+
+
+def _fake_passenger(state: dict) -> dict[str, Answer]:
+    level, single = state["connection"]["risk_level"], state["passenger"]["booking"] == "single_ticket"
+    declared = state["passenger"]["declared_assistance"]
+    urgent = level in ("tight", "at_risk")
+    if declared != "none" and urgent:
+        message = "assistance_coming"
+    elif level == "lost":
+        message = "rebooked" if single else "self_transfer_missed"
+    elif single:
+        message = "hurry" if level == "tight" else "called_off_first"
+    else:
+        message = "self_transfer_hurry"
+    one = lambda answer: Answer(answer, 0.9, {answer: 0.9})
+    return {
+        "needs_assistance": one("yes" if declared != "none" else "no"), "assistance_type": one(declared),
+        "crew_priority_deplane": one("yes" if urgent else "no"),
+        "ground_dispatch": one("buggy" if declared in ("wheelchair", "buggy") and urgent else "fast_track_escort" if single and level == "at_risk" else "none"),
+        "request_fast_track": one("yes" if single and level == "at_risk" else "no"), "message_template": one(message),
+    }
+
+
 async def ask_risk(state: dict) -> Answer:
+    if get_settings().model_fake:
+        return _fake_risk(state)
     response = await client().system_one(state=state, questions={"risk_level": RISK})
     return _normalize(response.answers["risk_level"], LEVELS)
 
 
 async def ask_ops(state: dict) -> Answer:
+    if get_settings().model_fake:
+        return _fake_ops(state)
     response = await client().system_one(state=state, questions={"ops_action": OPS})
     return _normalize(response.answers["ops_action"])
 
 
 async def ask_passenger(state: dict) -> dict[str, Answer]:
+    if get_settings().model_fake:
+        return _fake_passenger(state)
     response = await client().system_one(state=state, questions=PASSENGER)
     return {name: _normalize(answer) for name, answer in response.answers.items()}
 
 
 async def ping() -> str:
     """A one-question call, used by the health check."""
-    response = await client().system_one(state={"time_margin": "comfortable"}, questions={"risk_level": RISK})
+    if get_settings().model_fake:
+        return "fake model (benchmark mode)"
+    response = await client().system_one(state={"transfer": {"time_margin": "comfortable", "aggravating_factors": []}}, questions={"risk_level": RISK})
     return response.model

@@ -7,7 +7,8 @@ from cryptography.fernet import Fernet
 
 os.environ.setdefault("PII_KEY", Fernet.generate_key().decode())
 os.environ.setdefault("SESSION_SECRET", "test")
-os.environ.setdefault("AIRPORTS_DIR", os.path.join(os.path.dirname(__file__), "..", "..", "config", "airports"))
+os.environ.setdefault("JWT_SIGNING_SECRET", "a-test-signing-secret-that-is-long-enough-for-hs256")
+os.environ.setdefault("AIRPORTS_DIR", os.path.join(os.path.dirname(__file__), "airports"))
 
 import fakeredis.aioredis  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
@@ -58,10 +59,10 @@ class StubModel:
             raise TimeoutError("model down")
         self.passenger_calls += 1
         self.states.append(state)
-        declared = state["declared_assistance"] != "none"
+        declared = state["passenger"]["declared_assistance"] != "none"
         return {
             "needs_assistance": Answer("yes" if declared else "no", 0.95, {}),
-            "assistance_type": Answer(state["declared_assistance"] if declared else "none", 0.95, {}),
+            "assistance_type": Answer(state["passenger"]["declared_assistance"] if declared else "none", 0.95, {}),
             "crew_priority_deplane": Answer("yes", 0.95, {}),
             "ground_dispatch": Answer("buggy", 0.9, {}),
             "request_fast_track": Answer("yes", 0.9, {}),

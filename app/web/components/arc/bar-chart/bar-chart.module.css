@@ -27,9 +27,6 @@
 .bar { fill: color-mix(in oklab, var(--accent) 62%, var(--surface)); transition: fill var(--duration-fast) var(--ease-standard); }
 .chart[data-scrubbing] .bar { fill: color-mix(in oklab, var(--accent) 24%, var(--surface)); }
 /* On a dark surface a lighter mix keeps the hue clear instead of turning muddy. */
-:global([data-theme="dark"]) .bar { fill: color-mix(in oklab, var(--accent) 76%, var(--surface)); }
-:global([data-theme="dark"]) .chart[data-scrubbing] .bar { fill: color-mix(in oklab, var(--accent) 34%, var(--surface)); }
-:global([data-theme="dark"]) .chart .bar[data-active] { fill: var(--accent); }
 .chart .bar[data-active] { fill: var(--accent); }
 
 .gutter { position: relative; grid-area: 1 / 2; min-width: 0; }

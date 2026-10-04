@@ -49,14 +49,16 @@ async def test_withdrawing_assistance_removes_it_everywhere(stub):
     connection_id = await make_connection()
     principal_id, itinerary_id = await add_passenger(connection_id, purposes=("tracking", "assistance"), assistance="wheelchair")
     async with db.session() as s:
-        s.add(FeedItem(audience="crew", principal_id=principal_id, payload={"itinerary_id": itinerary_id, "assistance": "wheelchair"}))
+        s.add(FeedItem(audience="crew", connection_id=connection_id, payload={"itinerary_id": itinerary_id, "seat": "12A"}))
+        s.add(FeedItem(audience="ground", connection_id=connection_id, payload={"itinerary_id": itinerary_id, "kind": "buggy"}))
         await s.commit()
     async with db.session() as s:
         await erase_assistance(s, principal_id)
         await s.commit()
     assert await count(AssistanceNeed) == 0
     async with db.session() as s:
-        assert (await s.execute(select(FeedItem))).scalar_one().payload["assistance"] is None
+        # The ground job existed because of the need, so it goes; the crew row never held the need.
+        assert [f.audience for f in (await s.execute(select(FeedItem))).scalars()] == ["crew"]
 
 
 async def test_retention_purges_after_the_window(stub):
@@ -92,9 +94,9 @@ async def test_erasure_removes_the_passenger_from_staff_lists(stub):
     gone, gone_itinerary = await add_passenger(connection_id, "12A")
     _, kept_itinerary = await add_passenger(connection_id, "14C")
     async with db.session() as s:
-        s.add(FeedItem(audience="crew", payload={"itinerary_id": gone_itinerary, "seat": "12A"}))
-        s.add(FeedItem(audience="ground", payload={"itinerary_id": gone_itinerary, "seat": "12A"}))
-        s.add(FeedItem(audience="crew", payload={"itinerary_id": kept_itinerary, "seat": "14C"}))
+        s.add(FeedItem(audience="crew", connection_id=connection_id, payload={"itinerary_id": gone_itinerary, "seat": "12A"}))
+        s.add(FeedItem(audience="ground", connection_id=connection_id, payload={"itinerary_id": gone_itinerary, "seat": "12A"}))
+        s.add(FeedItem(audience="crew", connection_id=connection_id, payload={"itinerary_id": kept_itinerary, "seat": "14C"}))
         await s.commit()
     async with db.session() as s:
         await erase_principal(s, gone, actor=gone, reason="erasure")

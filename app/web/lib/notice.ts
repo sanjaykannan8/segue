@@ -1,10 +1,5 @@
 import type { Notice } from "./api";
 
-export const LANGUAGES = [
-  { value: "en", label: "English" },
-  { value: "hi", label: "हिन्दी (Hindi)" },
-];
-
 /** The first sentence of a paragraph, in English or Hindi punctuation. */
 function firstSentence(text: string): string {
   const match = /^.*?[.।!?](?=\s|$)/.exec(text.trim());
@@ -12,9 +7,9 @@ function firstSentence(text: string): string {
 }
 
 const TOPICS: { id: "collect" | "retention" | "rights"; match: RegExp }[] = [
-  { id: "collect", match: /collect|लेते|एकत्र/i },
-  { id: "retention", match: /how long|keep|कितने समय|कब तक/i },
-  { id: "rights", match: /right|अधिकार/i },
+  { id: "collect", match: /collect|लेते|एकत्र|نجمع|جمع|சேகரி/i },
+  { id: "retention", match: /how long|keep|कितने समय|कब तक|مدة|إلى متى|كم من الوقت|எவ்வளவு காலம்|காலம்/i },
+  { id: "rights", match: /right|अधिकार|حقوق|உரிமை/i },
 ];
 
 export type NoticePoint = { id: string; heading: string; line: string };

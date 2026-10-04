@@ -1,7 +1,6 @@
 /* Shared by the passenger screens. Spacing uses Arc's --space scale. */
 .stack { display: flex; flex-direction: column; gap: var(--space-4); }
 .fields { display: flex; flex-direction: column; gap: var(--space-4); }
-.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
 .full { width: 100%; }
 .actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
 .actions > * { flex: 1 1 auto; }
@@ -11,11 +10,6 @@
 /* Consent */
 .noticeHead { display: flex; align-items: flex-start; gap: var(--space-3); }
 .notice { display: flex; flex-direction: column; gap: var(--space-4); }
-.noticeSection h3 { font-size: var(--text-base); font-weight: 600; }
-.noticeSection p { margin-top: var(--space-1); color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.55; white-space: pre-line; }
-.noticeFacts { display: grid; gap: var(--space-3); margin: var(--space-5) 0 0; border-top: 1px solid var(--border); padding-top: var(--space-4); }
-.noticeFacts dt { color: var(--text-muted); font-size: var(--text-xs); }
-.noticeFacts dd { margin: 2px 0 0; font-size: var(--text-sm); font-weight: 500; overflow-wrap: anywhere; }
 .choices { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
 .choice { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); padding: var(--space-4) 0; border-top: 1px solid var(--border-subtle); }
 .choice:first-child { border-top: 0; padding-top: 0; }
@@ -24,29 +18,20 @@
 /* Scan */
 .camera { position: relative; overflow: hidden; border-radius: var(--radius-control); background: var(--deep-ocean); aspect-ratio: 4 / 3; }
 .camera video { display: block; width: 100%; height: 100%; object-fit: cover; }
-.cameraHint { position: absolute; left: 0; right: 0; bottom: 0; padding: var(--space-3) var(--space-4); background: rgb(6 40 61 / .72); color: #eaf6ff; font-size: var(--text-sm); text-align: center; }
+.cameraHint { position: absolute; inset-inline: 0; bottom: 0; padding: var(--space-3) var(--space-4); background: rgb(6 40 61 / .72); color: #eaf6ff; font-size: var(--text-sm); text-align: center; }
 .cameraIdle { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); padding: var(--space-6) 0 var(--space-2); text-align: center; }
 .tabPanel { padding-top: var(--space-5); }
 .scanned { display: flex; align-items: center; gap: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-control); padding: var(--space-3) var(--space-4); background: var(--surface-muted); font-size: var(--text-sm); }
 
-.confirm { display: flex; flex-direction: column; gap: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-control); padding: var(--space-4); background: var(--surface-muted); }
-.confirmTop { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
-.confirmFlight { font-weight: 600; }
 .route { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-lg); font-weight: 600; letter-spacing: 0; }
 .route svg { color: var(--text-muted); }
-.times { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin: 0; }
-.legend { margin-bottom: var(--space-3); font-size: var(--text-sm); font-weight: 600; }
-.manual { display: flex; flex-direction: column; gap: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-control); padding: var(--space-4); }
 
 /* Trip */
-.statusTop { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .statusLabel { color: var(--text-secondary); font-size: var(--text-sm); }
 .airport { font-size: var(--text-lg); font-weight: 600; }
 .gaugeRow { display: grid; grid-template-columns: minmax(0, 11rem) minmax(0, 1fr); align-items: center; gap: var(--space-4); margin-top: var(--space-4); }
-.gaugeFacts { display: flex; flex-direction: column; gap: var(--space-3); }
 .headline { font-size: var(--text-lg); font-weight: 600; line-height: 1.25; }
 .needs { color: var(--text-secondary); font-size: var(--text-sm); }
-.mascotRow { display: flex; align-items: center; gap: var(--space-3); }
 .flights { display: grid; gap: var(--space-3); margin-top: var(--space-5); }
 .flight { border: 1px solid var(--border); border-radius: var(--radius-control); padding: var(--space-4); }
 .flightTop { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
@@ -55,7 +40,6 @@
 .flightFacts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin: var(--space-3) 0 0; }
 .updated { margin-top: var(--space-3); color: var(--text-muted); font-size: var(--text-xs); }
 .divider { height: 1px; margin: var(--space-5) 0; border: 0; background: var(--border); }
-.subhead { margin-bottom: var(--space-3); font-size: var(--text-sm); font-weight: 600; }
 .assist { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-5); border: 1px solid var(--border); border-radius: var(--radius-control); padding: var(--space-3) var(--space-4); background: var(--surface-muted); font-size: var(--text-sm); }
 .assist svg { flex: 0 0 auto; color: var(--accent); }
 .feedHead { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
@@ -82,13 +66,12 @@
 
 @media (max-width: 22rem) {
 
-  .row2, .facts, .times { grid-template-columns: 1fr; }
+  .facts { grid-template-columns: 1fr; }
 }
 
 /* Phones: the gauge sits above the status text instead of squeezing it into a narrow column. */
 @media (max-width: 34rem) {
   .gaugeRow { grid-template-columns: 1fr; justify-items: center; text-align: center; }
-  .mascotRow { justify-content: center; }
 }
 
 /* Round 2: hero, notice summary, status hero */
@@ -110,7 +93,7 @@
 .heroCopy { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
 .statusHero .headline { font-size: var(--text-xl); }
 .statusHero .gaugeRow { margin-top: var(--space-5); border-top: 1px solid var(--border-subtle); padding-top: var(--space-5); }
-.meter { width: 100%; min-width: 0; text-align: left; }
+
 .flights { margin-top: 0; }
 @media (min-width: 40rem) { .statusHero { padding: var(--space-6); } }
 
@@ -127,3 +110,27 @@
 .quietRow { display: flex; justify-content: center; }
 .quietLink { color: var(--text-secondary); font-size: var(--text-sm); text-align: center; }
 .quietLink a { font-weight: 500; }
+
+/* Round 8 */
+.needHave { display: flex; width: 100%; min-width: 0; flex-direction: column; gap: var(--space-2); text-align: start; }
+.needText { font-size: var(--text-sm); font-weight: 500; font-variant-numeric: tabular-nums; }
+.needTrack { height: 10px; overflow: hidden; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--risk) 16%, var(--surface-muted)); }
+.needFill { display: block; block-size: 100%; border-radius: inherit; background: var(--risk); }
+.needSpare { color: var(--risk-ink); font-size: var(--text-sm); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.feed { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.feedItem { display: flex; gap: var(--space-3); padding: var(--space-4) 0; border-top: 1px solid var(--border-subtle); }
+.feedItem:first-child { border-top: 0; }
+.feedIcon { display: grid; width: 2rem; height: 2rem; flex: 0 0 auto; place-items: center; border-radius: var(--radius-pill); background: var(--accent-subtle); color: var(--accent-strong); }
+.feedItem[data-risk] .feedIcon { background: color-mix(in srgb, var(--risk) 12%, var(--surface)); color: var(--risk-ink); }
+.feedCopy { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.feedTitle { font-weight: 600; }
+.feedBody { color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.5; }
+.feedTime { margin-top: 2px; color: var(--text-muted); font-size: var(--text-xs); }
+
+.guide { display: inline-flex; min-height: 2.75rem; align-items: center; gap: var(--space-2); margin-top: var(--space-4); font-size: var(--text-sm); font-weight: 600; }
+.guide svg { flex: 0 0 auto; }
+.guideNote { color: var(--text-secondary); font-weight: 400; }
+.flightNo { font-family: var(--font-body); letter-spacing: 0; }
+.policyLink, .quietLink a, .noticeRef a { display: inline-flex; min-height: 2.75rem; align-items: center; }
+.hero > :last-child { margin-top: var(--space-2); }

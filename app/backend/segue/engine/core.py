@@ -9,6 +9,7 @@ For one connection and one event:
 If the model is unavailable (breaker open, timeout, error) the risk comes from fixed
 thresholds on the buffer, nothing is automated, and non-safe connections go to ops for review.
 """
+import asyncio
 import json
 import logging
 import time
@@ -26,6 +27,7 @@ from ..core.settings import get_settings
 from ..core.trace import trace
 from ..core.util import decrypt, idempotency_key, risk_cache_key
 from ..model import client as model
+from ..model import state as st
 
 log = logging.getLogger("segue.engine")
 
@@ -42,6 +44,9 @@ class Result:
     risk: dict | None = None
     risk_from_cache: bool = False
     degraded: bool = False
+    version: str | None = None
+    model_calls: int = 0
+    passengers: int = 0
     decisions: list[Decision] = field(default_factory=list)
     principals: set[str] = field(default_factory=set)
 
@@ -72,13 +77,13 @@ async def connection_risk(db: AsyncSession, connection: Connection, inbound: Fli
         return risk, True
     started = time.perf_counter()
 
-    # The exact minutes stay in code; the model sees the band they fall in, plus context.
-    state = {
-        "time_margin": buf.margin_band(base.buffer_min),
-        "terminal_change": bool(inbound.arr_terminal and outbound.dep_terminal and inbound.arr_terminal != outbound.dep_terminal),
-        "queue_trend": "steady",  # no live queue feed yet
-        "inbound_status": inbound.status, "outbound_status": outbound.status,
-    }
+    # The exact minutes stay in code; the model sees the band they fall in, plus the context and the policy.
+    state = st.risk_state(
+        margin=buf.margin_band(base.buffer_min),
+        terminal_change=buf.changes_terminal(connection.airport, inbound.arr_terminal, outbound.dep_terminal, inbound.arr_gate, outbound.dep_gate),
+        queue_trend="steady",  # no live queue feed yet
+        inbound_status=inbound.status, outbound_status=outbound.status, airport=connection.airport,
+    )
     source = "model"
     try:
         answer = await Breaker(redis(), "model").call(lambda: model.ask_risk(state))
@@ -101,7 +106,7 @@ async def connection_risk(db: AsyncSession, connection: Connection, inbound: Fli
         # A rules result is not cached, so the model's answer replaces it as soon as the model is back.
         await redis().set(key, json.dumps(risk), ex=RISK_TTL_S)
     elapsed = round((time.perf_counter() - started) * 1000)
-    await trace(event_id, "risk", f"Risk for {label}: {LABEL[level]}" + (" (model call, now cached)" if source == "model" else " (fixed rules: model unavailable)"), connection=label, level=level, cache="miss", source=source, confidence=round(confidence, 2), probabilities=probabilities, time_margin=state["time_margin"], version=version, model_ms=elapsed if source == "model" else 0)
+    await trace(event_id, "risk", f"Risk for {label}: {LABEL[level]}" + (" (model call, now cached)" if source == "model" else " (fixed rules: model unavailable)"), connection=label, level=level, cache="miss", source=source, confidence=round(confidence, 2), probabilities=probabilities, time_margin=state["transfer"]["time_margin"], version=version, model_ms=elapsed if source == "model" else 0)
     return risk, False
 
 
@@ -110,12 +115,17 @@ async def _consents(db: AsyncSession, principal_id: str) -> set[str]:
     return set(rows)
 
 
-async def _unchanged(db: AsyncSession, connection_id: str, itinerary_id: str | None, decision_type: str, answer: str) -> bool:
-    """Only a change is news: skip a decision equal to the latest live one of its kind."""
+async def _unchanged(db: AsyncSession, connection_id: str, itinerary_id: str | None, decision_type: str, answer: str, version: str | None = None) -> bool:
+    """Only a change is news: skip a decision equal to the latest live one of its kind.
+    A suggestion ops dismissed is not raised again while the flight data is the same."""
     query = select(Decision).where(Decision.connection_id == connection_id, Decision.type == decision_type).order_by(Decision.created_at.desc()).limit(1)
     query = query.where(Decision.itinerary_id == itinerary_id) if itinerary_id else query.where(Decision.itinerary_id.is_(None))
     last = (await db.execute(query)).scalar_one_or_none()
-    return last is not None and last.answer == answer and last.status != "dismissed"
+    if last is None or last.answer != answer:
+        return False
+    if last.status == "dismissed":
+        return version is not None and (last.payload or {}).get("version") == version
+    return True
 
 
 async def _decide(db: AsyncSession, result: Result, *, event_id: str, connection: Connection, itinerary: Itinerary | None, decision_type: str, answer: str, confidence: float, probabilities: dict, target: str, payload: dict, ops_text: tuple[str, str], expires_at: datetime | None, priority: int = 0, gate: str | None = None) -> None:
@@ -123,7 +133,7 @@ async def _decide(db: AsyncSession, result: Result, *, event_id: str, connection
     key = idempotency_key(connection.id, itinerary_id, decision_type, event_id)
     if (await db.execute(select(Decision.id).where(Decision.idempotency_key == key))).first():
         return  # this event was already processed
-    if await _unchanged(db, connection.id, itinerary_id, decision_type, answer):
+    if await _unchanged(db, connection.id, itinerary_id, decision_type, answer, result.version):
         return
     gate = gate or gate_for(answer, decision_type, confidence)
     payload["event_id"] = event_id  # lets the relay and consumers add to the same trace
@@ -131,7 +141,7 @@ async def _decide(db: AsyncSession, result: Result, *, event_id: str, connection
         idempotency_key=key, connection_id=connection.id, itinerary_id=itinerary_id, principal_id=itinerary.principal_id if itinerary else None,
         type=decision_type, answer=answer, probabilities=probabilities, confidence=confidence, gate=gate,
         status="executed" if gate == "auto" else "pending",
-        payload={"target": target, "message": payload, "priority": priority, "title": ops_text[0], "detail": ops_text[1], "expires_at": expires_at.isoformat() if expires_at else None},
+        payload={"target": target, "message": payload, "priority": priority, "title": ops_text[0], "detail": ops_text[1], "expires_at": expires_at.isoformat() if expires_at else None, "version": result.version},
     )
     db.add(decision)
     await db.flush()
@@ -175,11 +185,12 @@ async def process_connection(db: AsyncSession, connection_id: str, event_id: str
     if arrival is None or departure is None:
         return result  # nothing to score until both times are known
 
-    base = buf.connection_buffer(connection.airport, arrival, departure, inbound.arr_terminal, outbound.dep_terminal)
+    base = buf.connection_buffer(connection.airport, arrival, departure, inbound.arr_terminal, outbound.dep_terminal, inbound.arr_gate, outbound.dep_gate)
     label = f"{inbound.flight_iata} → {outbound.flight_iata}"
     await trace(event_id, "buffer", f"Time buffer for {label}: {base.buffer_min} min", connection=label, left_min=base.left_min, needed_min=base.needed_min, buffer_min=base.buffer_min, steps=[{"label": text, "minutes": minutes} for _, text, minutes in base.steps if minutes])
     risk, result.risk_from_cache = await connection_risk(db, connection, inbound, outbound, base, event_id)
-    result.risk, result.degraded = risk, risk["source"] == "rules"
+    result.model_calls += 0 if result.risk_from_cache or risk["source"] != "model" else 1
+    result.risk, result.degraded, result.version = risk, risk["source"] == "rules", risk["version"]
 
     itineraries = list((await db.execute(select(Itinerary).where(Itinerary.connection_id == connection.id))).scalars())
     result.principals = {i.principal_id for i in itineraries}
@@ -196,16 +207,22 @@ async def process_connection(db: AsyncSession, connection_id: str, event_id: str
         # Only single-ticket passengers are the airline's to hold or rebook for.
         protected = sum(1 for i in itineraries if i.booking != "separate_tickets")
         try:
-            ops = await Breaker(redis(), "model").call(lambda: model.ask_ops({"risk_level": level, "protected_passengers": protected, "self_transfer_passengers": len(itineraries) - protected, "outbound_status": outbound.status}))
+            ops = await Breaker(redis(), "model").call(lambda: model.ask_ops(st.ops_state(risk_level=level, protected_passengers=protected, self_transfer_passengers=len(itineraries) - protected, outbound_status=outbound.status)))
+            result.model_calls += 1
             await trace(event_id, "ops", f"Ops question for {label}: {ops.answer.replace('_', ' ')}", connection=label, answer=ops.answer, confidence=round(ops.confidence, 2), probabilities=ops.probabilities, protected_passengers=protected, self_transfer_passengers=len(itineraries) - protected)
             if ops.answer not in ("none", "monitor", "notify_only"):
-                text = {"hold_flight": (f"Hold {outbound.flight_iata}", f"{protected} single-ticket passenger(s) on {label} are rated {LABEL[level]}; the buffer is {base.buffer_min} min."),
+                s_ = get_settings()
+                hold_min = max(5, min(s_.hold_max_min, s_.hold_target_buffer_min - base.buffer_min))
+                text = {"hold_flight": (f"Hold {outbound.flight_iata} for {hold_min} min", f"{protected} single-ticket passenger(s) on {label} are rated {LABEL[level]}; the buffer is {base.buffer_min} min."),
                         "escort": (f"Send escorts for {label}", f"{protected} single-ticket passenger(s) need help on the ground. No hold needed."),
                         "rebook": (f"Rebook passengers on {label}", f"The connection cannot be made (buffer {base.buffer_min} min).")}[ops.answer]
-                await _decide(db, result, event_id=event_id, connection=connection, itinerary=None, decision_type="ops_action", answer=ops.answer, confidence=ops.confidence, probabilities=ops.probabilities, target="ops.action", payload={}, ops_text=text, expires_at=departure)
+                await _decide(db, result, event_id=event_id, connection=connection, itinerary=None, decision_type="ops_action", answer=ops.answer, confidence=ops.confidence, probabilities=ops.probabilities, target="ops.action", payload={"hold_min": hold_min, "flight_id": outbound.id} if ops.answer == "hold_flight" else {}, ops_text=text, expires_at=departure)
         except Exception as error:
             log.warning("ops question skipped: %s", type(error).__name__)
 
+    route = buf.transfer(buf.airport_config(connection.airport), inbound.arr_terminal, outbound.dep_terminal, inbound.arr_gate, outbound.dep_gate)
+    # Work out each passenger's own situation first (database reads, one after another)...
+    contexts = {}
     for itinerary in itineraries:
         if only_itinerary and itinerary.id != only_itinerary:
             continue
@@ -218,12 +235,34 @@ async def process_connection(db: AsyncSession, connection_id: str, event_id: str
             assistance = decrypt(need.type_enc) if need else None
         my_buffer = base.buffer_min - buf.passenger_offset(connection.airport, base, itinerary.seat, assistance, itinerary.booking)
         my_level = max(level, buf.rule_level(my_buffer), key=SEVERITY.get) if my_buffer < base.buffer_min else level
+        contexts[itinerary.id] = (consents, assistance, my_buffer, my_level)
+    result.passengers = len(contexts)
+
+    # ...then ask the model about everyone who is not safe, at the same time. The calls are independent,
+    # so a connection with many passengers costs little more wall-clock time than one with a few.
+    terminal_change = buf.changes_terminal(connection.airport, inbound.arr_terminal, outbound.dep_terminal, inbound.arr_gate, outbound.dep_gate)
+    gate = asyncio.Semaphore(get_settings().model_concurrency)
+
+    async def ask(itinerary: Itinerary):
+        _, assistance, _, my_level = contexts[itinerary.id]
+        async with gate:
+            return await Breaker(redis(), "model").call(lambda: model.ask_passenger(st.passenger_state(risk_level=my_level, booking=itinerary.booking, declared_assistance=assistance, terminal_change=terminal_change)))
+
+    asked = [i for i in itineraries if i.id in contexts and contexts[i.id][3] != "safe"]
+    answered = dict(zip((i.id for i in asked), await asyncio.gather(*(ask(i) for i in asked), return_exceptions=True)))
+    result.model_calls += sum(1 for value in answered.values() if not isinstance(value, Exception))
+
+    for itinerary in itineraries:
+        if itinerary.id not in contexts:
+            continue
+        consents, assistance, my_buffer, my_level = contexts[itinerary.id]
         common = {"itinerary_id": itinerary.id, "connection_id": connection.id, "seat": itinerary.seat, "buffer_min": my_buffer, "level": my_level, "booking": itinerary.booking}
 
         async def message(template: str, confidence: float = 1.0, probabilities: dict | None = None) -> None:
             if "notifications" in consents:
                 await _decide(db, result, event_id=event_id, connection=connection, itinerary=itinerary, decision_type="message_template", answer=template, confidence=confidence, probabilities=probabilities or {}, target="pax.alert", gate="auto",
-                              payload={**common, "principal_id": itinerary.principal_id, "template": template, "vars": {"outbound": outbound.flight_iata, "dest": outbound.dest, "gate": outbound.dep_gate or "", "seat": itinerary.seat or "", "buffer": my_buffer}},
+                              payload={**common, "principal_id": itinerary.principal_id, "template": template, "vars": {"outbound": outbound.flight_iata, "dest": outbound.dest, "gate": outbound.dep_gate or "", "seat": itinerary.seat or "", "buffer": my_buffer,
+                                                "arr_gate": inbound.arr_gate or "", "origin": route.origin, "destination": route.destination, "minutes": route.minutes, "how": route.how, "sourced": route.sourced}},
                               ops_text=("Passenger message", template), expires_at=departure)
 
         withdraw = lambda decision_type, target, until: _withdraw(db, result, event_id=event_id, connection=connection, itinerary=itinerary, decision_type=decision_type, target=target, expires_at=until)
@@ -233,18 +272,16 @@ async def process_connection(db: AsyncSession, connection_id: str, event_id: str
             await trace(event_id, "passenger", f"Seat {itinerary.seat or '?'}: safe, no model call needed", connection=label, seat=itinerary.seat, level=my_level, buffer_min=my_buffer, booking=itinerary.booking, answers={})
             await message("on_track")  # no model call for a safe passenger
             continue
-        try:
-            answers = await Breaker(redis(), "model").call(lambda: model.ask_passenger({"risk_level": my_level, "booking": itinerary.booking, "declared_assistance": assistance or "none", "terminal_change": bool(inbound.arr_terminal and outbound.dep_terminal and inbound.arr_terminal != outbound.dep_terminal)}))
-        except Exception as error:
-            log.warning("passenger questions skipped: %s", type(error).__name__)
+        answers = answered[itinerary.id]
+        if isinstance(answers, Exception):
+            log.warning("passenger questions skipped: %s", type(answers).__name__)
             continue
 
-        await trace(event_id, "passenger", f"Seat {itinerary.seat or '?'}: six decisions in one model call", connection=label, seat=itinerary.seat, level=my_level, buffer_min=my_buffer, booking=itinerary.booking, answers={name: {"answer": a.answer, "confidence": round(a.confidence, 2)} for name, a in answers.items() if name != "needs_assistance" or assistance})
-        shown_assistance = assistance if assistance and answers["needs_assistance"].answer == "yes" else None
+        await trace(event_id, "passenger", f"Seat {itinerary.seat or '?'}: six decisions in one model call", connection=label, seat=itinerary.seat, level=my_level, buffer_min=my_buffer, booking=itinerary.booking, answers={name: {"answer": a.answer, "confidence": round(a.confidence, 2)} for name, a in answers.items() if name not in ("needs_assistance", "assistance_type")})
         deplane = answers["crew_priority_deplane"]
         if deplane.answer == "yes":
             await _decide(db, result, event_id=event_id, connection=connection, itinerary=itinerary, decision_type="crew_priority_deplane", answer="yes", confidence=deplane.confidence, probabilities=deplane.probabilities, target="crew.deplane",
-                          payload={**common, "flight_id": inbound.id, "onward": outbound.flight_iata, "onward_dest": outbound.dest, "assistance": shown_assistance},
+                          payload={**common, "flight_id": inbound.id, "onward": outbound.flight_iata, "onward_dest": outbound.dest},
                           ops_text=(f"Call seat {itinerary.seat or '?'} off first", f"{label}: buffer {my_buffer} min."), expires_at=arrival)
         else:
             await withdraw("crew_priority_deplane", "crew.deplane", arrival)
@@ -252,7 +289,9 @@ async def process_connection(db: AsyncSession, connection_id: str, event_id: str
         if dispatch.answer == "none":
             await withdraw("ground_dispatch", "ground.dispatch", departure)
         if dispatch.answer != "none":
-            kind = answers["assistance_type"].answer if shown_assistance and answers["assistance_type"].answer != "none" else dispatch.answer
+            # The message names the resource to send, never the passenger's need: staff screens read the
+            # need from its encrypted table when they open the list, and only while the consent stands.
+            kind = dispatch.answer
             priority = max(0, min(10, 10 - my_buffer // 5))
             await _decide(db, result, event_id=event_id, connection=connection, itinerary=itinerary, decision_type="ground_dispatch", answer=kind, confidence=dispatch.confidence, probabilities=dispatch.probabilities, target="ground.dispatch", priority=priority,
                           payload={**common, "kind": kind, "from_gate": inbound.arr_gate, "to_gate": outbound.dep_gate, "inbound": inbound.flight_iata, "outbound": outbound.flight_iata, "priority": priority},

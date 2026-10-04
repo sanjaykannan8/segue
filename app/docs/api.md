@@ -225,3 +225,27 @@ type DemoPassenger = {
   }[];
 };
 ```
+
+## Dubai-only, languages, email and masked names (latest changes)
+
+- **Dubai only.** `POST /itineraries` returns 400 unless the first flight lands at DXB and the second leaves from it.
+- **Sign-in is JWT in httpOnly cookies.** Nothing changes for the browser: keep `credentials: "include"`. A staff access token lasts 15 minutes and is renewed silently by a refresh cookie on the next request; a 401 means the session really ended. `POST /auth/login` returns 429 after five wrong passwords in ten minutes.
+- **Languages:** `en`, `ar`, `hi`, `ta` everywhere a language is accepted. `GET /notice?lang=` returns translated `title`, `intro`, `sections` and `purposes`, plus `dir: "rtl" | "ltr"` (rtl for Arabic). Passenger messages (`/me/feed`, the SSE `feed` event) arrive already translated into the passenger's language.
+- **Email:** `POST /consent` and `PATCH /me/data` take `email?: string` (empty string clears it). It is stored only with the `notifications` consent (403 on PATCH otherwise) and removed when that consent is withdrawn. `GET /me` returns `email`. Each passenger message is also emailed, with a vector map of the route at DXB.
+- **Masked names for staff.** Crew list items, ground jobs and authority requests carry `name: string | null`, already masked by the server as `P***a S****a`. Show it as given; never try to unmask it.
+- **Route step text is real.** `ConnectionView.steps[1].label` now names the actual DXB link, for example "Walk between the B and C gates" or "Shuttle bus from connections desk K to the D gates".
+- **Breakers:** a fourth breaker, `mail`.
+
+## Added in the security pass (2026-10-04)
+
+| Route | Who | What |
+|---|---|---|
+| `POST /me/email/verify` `{code}` | passenger | Confirms the email address with the 6-digit code sent to it. Returns the `/me` view |
+| `POST /me/email/resend` | passenger | Sends a new code (5 an hour) |
+| `POST /auth/password` `{current, new}` | any staff role | Changes the password (12 characters or more) and signs out every other device |
+| `POST /auth/logout-all` | any staff role | Ends every session of this account |
+
+- `/me` now includes `email_verified`. Alerts are emailed only when it is true.
+- Crew rows and ground jobs carry `assistance` (read from the encrypted table when the list is opened, only while the consent stands). Queue messages never hold it.
+- Limits: 40 flight searches and 10 trip changes per session per hour; 6 live streams per session; 600 passengers per connection.
+- A request that changes something is refused with 403 when it comes from another origin.

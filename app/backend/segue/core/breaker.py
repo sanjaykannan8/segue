@@ -13,7 +13,7 @@ from typing import TypeVar
 from redis.asyncio import Redis
 
 T = TypeVar("T")
-NAMES = ("model", "airlabs", "rabbit")
+NAMES = ("model", "airlabs", "rabbit", "mail")
 
 
 class BreakerOpen(Exception):

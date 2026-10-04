@@ -16,7 +16,7 @@ import { Sparkline } from "@/components/arc/sparkline/sparkline";
 import { SortableDataTable, type DataColumn } from "@/components/arc/sortable-data-table/sortable-data-table";
 import { LiveState, StaffHeading } from "@/components/segue/staff-shell";
 import { useToast } from "@/components/segue/toasts";
-import { ErrorState, Mascot, Panel, PanelHeader, RiskBadge, RiskIcon, StaleNote } from "@/components/segue/ui";
+import { ErrorState, LiveRegion, Mascot, Panel, PanelHeader, RiskBadge, RiskIcon, StaleNote } from "@/components/segue/ui";
 import { useLive } from "@/components/segue/use-live";
 import { api, errorMessage, type OpsAction, type OpsBoard, type RiskLevel } from "@/lib/api";
 import { ageSince, asRiskLevel, flightLabel, formatAge, formatBuffer, formatMinutes, humanize, RISK_LABEL, RISK_LEVELS, RISK_RANK } from "@/lib/format";
@@ -63,6 +63,13 @@ const CONTEXT: Record<RiskLevel, string> = {
   lost: "passengers who can't make it",
 };
 
+/** What pressing Approve does, in plain words. */
+const APPROVE_EFFECT: Record<string, string> = {
+  hold_flight: "Approving holds the departure and re-scores everyone on it.",
+  rebook: "Approving starts rebooking for the passengers who cannot make it.",
+  escort: "Approving sends an escort request to the ground team.",
+};
+
 function ActionCard({ action, now, onDecided }: { action: OpsAction; now: number; onDecided: (next: OpsAction) => void }) {
   const notify = useToast();
   const [busy, setBusy] = useState<"approve" | "dismiss" | null>(null);
@@ -103,6 +110,7 @@ function ActionCard({ action, now, onDecided }: { action: OpsAction; now: number
           <Badge size="sm" tone="neutral">{humanize(action.type)}: {humanize(action.answer)}</Badge>
         </div>
         <Progress value={percent} label="Confidence" showValue />
+        {action.status === "pending" ? <p className={styles.muted}>{APPROVE_EFFECT[action.answer] ?? "Approving sends this to the team that carries it out."}</p> : null}
         {action.gate === "human" && probabilities.length ? (
           <ul className={styles.probs} aria-label="Option probabilities">
             {probabilities.map(([option, value]) => <li key={option}>{humanize(option)} {Math.round(value * 100)}%</li>)}
@@ -137,7 +145,6 @@ export default function OpsPage() {
   const history = useSessionSeries(data, () => (data ? { safe: data.counts.safe ?? 0, tight: data.counts.tight ?? 0, at_risk: data.counts.at_risk ?? 0, lost: data.counts.lost ?? 0 } : null));
 
   const riskSlices = useMemo(() => RISK_LEVELS.map((level) => ({ key: level, label: RISK_LABEL[level], value: data?.counts[level] ?? 0, color: RISK_COLOR[level] })), [data]);
-  const scored = rows.filter((row) => row.buffer !== null).length;
   // Needs -> has, one line per connection: a line that falls is a connection short of time (negative buffer).
   const slopes = useMemo(() => rows.filter((row) => row.left !== null && row.needed !== null).sort((a, b) => (a.buffer ?? 0) - (b.buffer ?? 0)).slice(0, 8).map((row) => ({ key: row.id, label: row.label, start: Math.round(row.needed ?? 0), end: Math.round(row.left ?? 0) })), [rows]);
   const actionSlices = useMemo(() => ACTION_STATES.map((state) => ({ key: state.key, label: state.label, color: state.color, value: (data?.actions ?? []).filter((action) => action.status === state.key).length })).filter((slice) => slice.value > 0), [data]);
@@ -147,11 +154,12 @@ export default function OpsPage() {
 
   return (
     <>
-      <StaffHeading title="Ops board" hint="Every watched connection by risk, with the actions waiting for you." aside={<LiveState state={board.stream} />} />
+      <StaffHeading title="Ops controller" hint="Decide on connections at risk at Dubai International." aside={<LiveState state={board.stream} />} />
 
       {data?.degraded ? (
         <Alert tone="info" title="Degraded mode">The decision model is unavailable. Risk comes from fixed rules and nothing runs automatically.</Alert>
       ) : null}
+      {data ? <LiveRegion>{`Board updated: ${data.counts.at_risk} at risk, ${data.counts.lost} lost, ${pending} ${pending === 1 ? "action" : "actions"} waiting for a decision.`}</LiveRegion> : null}
       {data ? <StaleNote error={board.error} onRetry={() => void board.reload()} /> : null}
 
       {board.loading ? <Panel><Skeleton label="Loading the ops board" lines={6} /></Panel> : null}
@@ -213,7 +221,7 @@ export default function OpsPage() {
                   itemName={{ one: "connection", other: "connections" }}
                 />
               ) : (
-                <EmptyState icon={<Mascot pose="sleepy" size={40} />} title="No connections yet" description="Connections appear here once passengers add their trips." label="No connections" />
+                <EmptyState icon={<Mascot pose="sleepy" size={40} />} title="No connections yet" description="A connection appears here as soon as a passenger adds a trip through Dubai International." label="No connections" />
               )}
             </Panel>
 
@@ -225,7 +233,7 @@ export default function OpsPage() {
               {data.actions.length ? data.actions.map((action) => (
                 <ActionCard key={action.decision_id} action={action} now={now} onDecided={replaceAction} />
               )) : (
-                <Panel><EmptyState icon={<Mascot pose="calm" size={40} />} title="No actions right now" description="Suggestions show up here when a connection needs a decision." label="No suggested actions" /></Panel>
+                <Panel><EmptyState icon={<Mascot pose="calm" size={40} />} title="No actions right now" description="A card appears here when a connection at risk needs your decision, for example a short hold." label="No suggested actions" /></Panel>
               )}
             </section>
           </div>

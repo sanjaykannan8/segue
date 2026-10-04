@@ -2,7 +2,8 @@
 
 Every stage of the pipeline adds one entry: the event arriving, the buffer, the risk (cache hit or
 model call, with its time), each decision and its gate, the outbox publish, the delivery. Entries
-hold seats, flight numbers and model answers. Never a name, a phone number or a principal ID.
+hold seats, flight numbers and model answers. Never a name, a phone number, a principal ID or
+an assistance need. The list expires after a day.
 
 Tracing is best-effort: if Redis is unavailable the pipeline carries on without it.
 """
@@ -27,6 +28,7 @@ async def trace(event_id: str | None, stage: str, title: str, **detail) -> None:
         client = redis()
         await client.lpush(LOG_KEY, json.dumps(entry))
         await client.ltrim(LOG_KEY, 0, KEEP - 1)
+        await client.expire(LOG_KEY, 24 * 3600)
         await client.publish(CHANNEL, json.dumps({"event": "trace", "data": entry}))
     except Exception as error:  # never let the demo record break the real work
         log.debug("trace skipped: %r", error)

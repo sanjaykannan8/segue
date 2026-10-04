@@ -21,8 +21,9 @@ generated = {
     "POSTGRES_PASSWORD": secrets.token_urlsafe(18),
     "RABBIT_PASSWORD": secrets.token_urlsafe(18),
     "PII_KEY": base64.urlsafe_b64encode(os.urandom(32)).decode(),  # a Fernet key
-    "SESSION_SECRET": secrets.token_urlsafe(32),
-    "SEED_STAFF_PASSWORD": secrets.token_urlsafe(9),
+    "JWT_SIGNING_SECRET": secrets.token_urlsafe(48),
+    "REDIS_PASSWORD": secrets.token_urlsafe(18),
+    **{f"SEED_PASSWORD_{role}": secrets.token_urlsafe(12) for role in ("OPS", "CREW", "GROUND", "AUTHORITY", "ADMIN")},
 }
 
 values = dict(existing)
@@ -37,13 +38,15 @@ for line in example.read_text().splitlines():
         key, default = line.split("=", 1)
         key = key.strip()
         value = values.get(key, default)
+        if key == "REDIS_URL" and "@" not in value:
+            value = default  # an older .env without the Redis password
         # Compose does not expand ${...} inside env_file values, so write the URLs out in full.
-        value = value.replace("${POSTGRES_PASSWORD}", values["POSTGRES_PASSWORD"]).replace("${RABBIT_PASSWORD}", values["RABBIT_PASSWORD"])
+        value = value.replace("${POSTGRES_PASSWORD}", values["POSTGRES_PASSWORD"]).replace("${RABBIT_PASSWORD}", values["RABBIT_PASSWORD"]).replace("${REDIS_PASSWORD}", values["REDIS_PASSWORD"])
         lines.append(f"{key}={value}")
     else:
         lines.append(line)
 target.write_text("\n".join(lines) + "\n")
 print(f"Wrote {target}")
-print("Staff accounts: ops@, crew@, ground@, authority@ and admin@segue.local. The password is SEED_STAFF_PASSWORD in .env.")
+print("Staff accounts: ops@, crew@, ground@, authority@ and admin@segue.local. Each has its own password: SEED_PASSWORD_<ROLE> in .env.")
 if not values.get("AIRLABS_API_KEY"):
     print("Next: put your AirLabs key in .env as AIRLABS_API_KEY.")

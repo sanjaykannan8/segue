@@ -49,7 +49,7 @@ async def tick(producer) -> None:
                 log.warning("polling paused: %s", stop)
                 return  # the last known status stays, with its age shown
             except Exception as error:
-                log.warning("poll failed for %s: %r", flight.flight_iata, error)
+                log.warning("poll failed for %s: %s", flight.flight_iata, type(error).__name__)
                 continue
             flight.polled_at = now()
             changed = bool(data) and data["date"] == flight.date and apply(flight, data, "airlabs")
@@ -68,7 +68,7 @@ async def main() -> None:
             try:
                 await tick(producer)
             except Exception as error:
-                log.warning("poller tick failed: %r", error)
+                log.warning("poller tick failed: %s", type(error).__name__)
             await asyncio.sleep(TICK_S)
     finally:
         await producer.stop()

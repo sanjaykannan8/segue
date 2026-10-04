@@ -5,7 +5,7 @@ A breach is any unauthorised access to, or loss, disclosure or alteration of, pe
 ## 1. Contain (first hour)
 
 1. Take the affected service offline or block the route: `docker compose stop api`.
-2. Rotate the secrets in `.env`: `SESSION_SECRET` (ends all sessions), `SEED_STAFF_PASSWORD` and the staff passwords, the database and RabbitMQ passwords. If the encryption key `PII_KEY` may be exposed, treat all encrypted fields as disclosed.
+2. Rotate the secrets in `.env`: `JWT_SIGNING_SECRET` (ends all sessions), `SEED_STAFF_PASSWORD` and the staff passwords, the database and RabbitMQ passwords. If the encryption key `PII_KEY` may be exposed, treat all encrypted fields as disclosed.
 3. Keep the evidence. Do not delete logs or the database volume.
 
 ## 2. Scope

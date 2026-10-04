@@ -12,10 +12,6 @@ export function useNow(everyMs = 30_000): number {
   return now;
 }
 
-/** The viewer's time zone, for day groups and clock times. */
-export function localTimeZone(): string {
-  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch { return "UTC"; }
-}
 
 export type Sample<T> = T & { at: number };
 
