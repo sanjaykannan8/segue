@@ -1,0 +1,36 @@
+/* Filter bar: one rounded block above a list. Every control is at least 44px tall. */
+.bar { display: flex; flex-direction: column; gap: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-panel); padding: var(--space-3); background: var(--surface); }
+.searchRow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
+.search { position: relative; display: flex; min-width: min(100%, 16rem); flex: 1 1 18rem; align-items: center; }
+.searchIcon { position: absolute; inset-inline-start: var(--space-3); color: var(--text-muted); pointer-events: none; }
+.searchInput { width: 100%; min-height: 2.75rem; border: 1px solid var(--border-strong); border-radius: var(--radius-pill); padding: 0 2.75rem; background: var(--surface); color: var(--foreground); font-size: var(--text-sm); }
+.searchInput::placeholder { color: var(--text-muted); }
+.searchInput::-webkit-search-cancel-button { display: none; }
+.searchClear { position: absolute; inset-inline-end: 4px; display: grid; width: 2.25rem; height: 2.25rem; place-items: center; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-muted); cursor: pointer; }
+.searchClear:hover { background: var(--surface-muted); color: var(--foreground); }
+.count { color: var(--text-secondary); font-size: var(--text-sm); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.clear { min-height: 2.75rem; border: 0; border-radius: var(--radius-pill); padding: 0 var(--space-3); background: transparent; color: var(--accent-strong); font-size: var(--text-sm); font-weight: 600; cursor: pointer; }
+.clear:hover { background: var(--accent-subtle); }
+
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-5); }
+.group { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.groupLabel { color: var(--text-muted); }
+.chips { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.chip { display: inline-flex; min-height: 2.75rem; align-items: center; gap: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-pill); padding: 0 var(--space-3); background: var(--surface); color: var(--text-secondary); font-size: var(--text-sm); font-weight: 500; cursor: pointer; transition: background-color var(--duration-fast) var(--ease-standard), border-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
+.chip:hover { border-color: var(--border-strong); color: var(--foreground); }
+.chip[aria-pressed="true"] { border-color: var(--foreground); background: var(--foreground); color: var(--surface); }
+.chipCount { min-width: 1.25rem; border-radius: var(--radius-pill); padding: 0 6px; background: var(--surface-muted); color: var(--text-secondary); font-family: var(--font-mono); font-size: .6875rem; font-weight: 700; text-align: center; }
+.chip[aria-pressed="true"] .chipCount { background: color-mix(in srgb, var(--surface) 20%, transparent); color: var(--surface); }
+
+.toggle { display: inline-flex; min-height: 2.75rem; align-items: center; gap: var(--space-2); border-radius: var(--radius-pill); padding: 0 var(--space-3); color: var(--text-secondary); font-size: var(--text-sm); font-weight: 500; cursor: pointer; }
+.toggle:hover { background: var(--surface-muted); color: var(--foreground); }
+.toggle input { width: 1.125rem; height: 1.125rem; margin: 0; accent-color: var(--accent); }
+
+.none { display: flex; flex-direction: column; align-items: center; gap: var(--space-2); padding: var(--space-8) var(--space-4); text-align: center; }
+.noneTitle { font-weight: 600; }
+
+@media (max-width: 40rem) {
+  .count { flex: 1; }
+}
+/* The clear button stays small inside the field but has a 44px hit area. */
+.searchClear::after { content: ""; position: absolute; inset: -4px; }

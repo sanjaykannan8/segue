@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Clock, Database, ShieldCheck } from "lucide-react";
@@ -12,18 +12,20 @@ import SegmentedControl from "@/components/arc/segmented-control/segmented-contr
 import { TextReveal } from "@/components/arc/text-reveal/text-reveal";
 import { PassengerShell } from "@/components/segue/passenger-shell";
 import { ErrorState, FormError, LoadingPanel, Mascot, Panel, PanelHeader } from "@/components/segue/ui";
-import { api, isStatus, useResource, type Purpose } from "@/lib/api";
+import { api, isStatus, useResource, type NoticePurpose, type Purpose } from "@/lib/api";
 import { asLanguage, LANGUAGE_OPTIONS, useI18n } from "@/lib/i18n";
 import { noticeSummary } from "@/lib/notice";
 import styles from "./passenger.module.css";
 
 const POINT_ICON = { collect: Database, retention: Clock, rights: ShieldCheck } as const;
+/** Optional choices that make Segue work best: without updates the passenger only learns of a change by opening the app. */
+const RECOMMENDED: Purpose[] = ["notifications"];
 
 function Hero() {
   const { t, lang, setLanguage } = useI18n();
   return (
     <div className={styles.hero}>
-      <Mascot pose="happy" size={104} />
+      <Mascot pose="happy" size={72} />
       {/* Keyed by language so the title is drawn again, whole, when the language changes. */}
       <TextReveal key={lang} as="h1" text={t("consent.title")} className={styles.heroTitle} />
       <p className={styles.heroLine}>{t("consent.line")}</p>
@@ -41,6 +43,10 @@ export default function ConsentPage() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  // "Turn on recommended" removes itself, so focus moves to the email field it reveals instead of being lost.
+  const emailRef = useRef<HTMLInputElement>(null);
+  const [focusEmail, setFocusEmail] = useState(false);
+  useEffect(() => { if (focusEmail) { emailRef.current?.focus(); setFocusEmail(false); } }, [focusEmail]);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<unknown>(null);
   const [touched, setTouched] = useState(false);
@@ -63,6 +69,10 @@ export default function ConsentPage() {
   const missingRequired = required.some((id) => !chosen.includes(id));
   const blocked = missingRequired || !adult;
   const wantsUpdates = chosen.includes("notifications");
+  // Required choices first, then the recommended ones, then the rest. Nothing is ticked for the passenger.
+  const rank = (purpose: NoticePurpose) => (purpose.required ? 0 : RECOMMENDED.includes(purpose.id) ? 1 : 2);
+  const purposes = [...(data?.purposes ?? [])].sort((a, b) => rank(a) - rank(b));
+  const missingRecommended = purposes.filter((purpose) => !purpose.required && RECOMMENDED.includes(purpose.id) && !chosen.includes(purpose.id)).map((purpose) => purpose.id);
   const policyHref = `/privacy-policy?lang=${lang}`;
 
   async function submit(event: FormEvent) {
@@ -133,43 +143,62 @@ export default function ConsentPage() {
 
           <form onSubmit={submit} className={styles.stack} noValidate>
             <Panel>
-              <PanelHeader title={t("consent.choicesTitle")} hint={t("consent.choicesHint")} />
-              <p className={styles.noticeRef}>
-                {t("consent.agreeing")} <Link href={policyHref}>{t("consent.noticeLink", { version: data.version })}</Link>
-              </p>
+              <PanelHeader
+                title={t("consent.choicesTitle")}
+                hint={t("consent.choicesHint")}
+                action={missingRecommended.length ? (
+                  <Button type="button" variant="secondary" size="sm" onClick={() => { missingRecommended.forEach((id) => toggle(id, true)); setFocusEmail(true); }}>{t("consent.useRecommended")}</Button>
+                ) : undefined}
+              />
               <ul className={styles.choices} lang={data.lang} dir={data.dir}>
-                {data.purposes.map((purpose) => (
-                  <li key={purpose.id} className={styles.choice}>
-                    <Checkbox
-                      label={purpose.title}
-                      description={purpose.description}
-                      checked={chosen.includes(purpose.id)}
-                      onCheckedChange={(state) => toggle(purpose.id, state === true)}
-                      aria-required={purpose.required || undefined}
-                      aria-describedby={purpose.required && touched && missingRequired ? "required-error" : undefined}
-                    />
-                    <Badge size="sm" tone={purpose.required ? "info" : "neutral"}>{t(purpose.required ? "consent.required" : "consent.optional")}</Badge>
-                  </li>
-                ))}
+                {purposes.map((purpose) => {
+                  const recommended = !purpose.required && RECOMMENDED.includes(purpose.id);
+                  return (
+                    <li key={purpose.id} className={styles.choice} data-recommended={recommended || undefined}>
+                      <div className={styles.choiceMain}>
+                        <Checkbox
+                          label={purpose.title}
+                          description={purpose.description}
+                          checked={chosen.includes(purpose.id)}
+                          onCheckedChange={(state) => toggle(purpose.id, state === true)}
+                          aria-required={purpose.required || undefined}
+                          aria-describedby={purpose.required && touched && missingRequired ? "required-error" : undefined}
+                        />
+                        {/* Updates need somewhere to go: the address is asked for right under the choice that uses it. */}
+                        {purpose.id === "notifications" && wantsUpdates ? (
+                          <div className={styles.inlineField}>
+                            <Input ref={emailRef} label={t("consent.email")} name="email" type="email" inputMode="email" autoComplete="email" dir="ltr" value={email} onChange={(event) => setEmail(event.target.value)} description={t("consent.emailHint")} />
+                          </div>
+                        ) : null}
+                        {purpose.id === "notifications" && !wantsUpdates ? <p className={styles.nudge}>{t("consent.updatesNudge")}</p> : null}
+                      </div>
+                      <Badge size="sm" tone={purpose.required || recommended ? "info" : "neutral"}>
+                        {t(purpose.required ? "consent.required" : recommended ? "consent.recommended" : "consent.optional")}
+                      </Badge>
+                    </li>
+                  );
+                })}
               </ul>
               {touched && missingRequired ? <p id="required-error" className={styles.fieldError} role="alert">{t("consent.requiredError")}</p> : null}
             </Panel>
 
-            <Panel>
-              <PanelHeader title={t("consent.aboutTitle")} hint={t("consent.aboutHint")} />
+            <details className={styles.more}>
+              <summary>{t("consent.moreAbout")}</summary>
               <div className={styles.fields}>
                 <Input label={t("consent.name")} name="name" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} />
                 <Input label={t("consent.phone")} name="phone" type="tel" inputMode="tel" autoComplete="tel" dir="ltr" value={phone} onChange={(event) => setPhone(event.target.value)} description={t("consent.phoneHint")} />
-                {wantsUpdates ? (
-                  <Input label={t("consent.email")} name="email" type="email" inputMode="email" autoComplete="email" dir="ltr" value={email} onChange={(event) => setEmail(event.target.value)} description={t("consent.emailHint")} />
-                ) : null}
-                <Checkbox label={t("consent.adult")} checked={adult} onCheckedChange={(state) => setAdult(state === true)} aria-required aria-describedby={touched && !adult ? "adult-error" : undefined} />
-                {touched && !adult ? <p id="adult-error" className={styles.fieldError} role="alert" style={{ marginTop: 0 }}>{t("consent.adultError")}</p> : null}
               </div>
-            </Panel>
+            </details>
 
-            <FormError error={isStatus(submitError, 400) ? new Error(t("consent.submitError")) : submitError} />
-            <Button type="submit" size="lg" loading={submitting} className={styles.full}>{t("consent.submit")}</Button>
+            <div className={styles.confirm}>
+              <Checkbox label={t("consent.adult")} checked={adult} onCheckedChange={(state) => setAdult(state === true)} aria-required aria-describedby={touched && !adult ? "adult-error" : undefined} />
+              {touched && !adult ? <p id="adult-error" className={styles.fieldError} role="alert" style={{ marginTop: 0 }}>{t("consent.adultError")}</p> : null}
+              <p className={styles.noticeRef}>
+                {t("consent.agreeing")} <Link href={policyHref}>{t("consent.noticeLink", { version: data.version })}</Link>
+              </p>
+              <FormError error={isStatus(submitError, 400) ? new Error(t("consent.submitError")) : submitError} />
+              <Button type="submit" size="lg" loading={submitting} className={styles.full}>{t("consent.submit")}</Button>
+            </div>
           </form>
           <p className={styles.quietLink}>{t("consent.haveCode")} <Link href="/claim">{t("consent.enterCode")}</Link></p>
         </>

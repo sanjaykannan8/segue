@@ -83,3 +83,48 @@
 .table tr:last-child th { border-bottom: 0; }
 .seat { font-size: var(--text-lg); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .helper { margin-bottom: var(--space-4); border-radius: var(--radius-control); padding: var(--space-3) var(--space-4); background: var(--surface-muted); color: var(--text-secondary); font-size: var(--text-sm); }
+
+/* Minimal theme: rounded blocks, one hairline, mono uppercase metadata. */
+.table th { font-family: var(--font-mono); font-size: .6875rem; letter-spacing: .05em; text-transform: uppercase; }
+.table tbody th { font-family: var(--font-body); font-size: inherit; letter-spacing: 0; text-transform: none; }
+.rank { font-family: var(--font-mono); }
+.mono { font-family: var(--font-mono); }
+.metric { box-shadow: none; }
+.metricTrend { border-top-color: var(--border); }
+.tile, .breakers .breaker { background: var(--surface); }
+.bigNumber, .flightTitle h2, .actionsTitle { font-weight: 700; }
+/* Keeps screen-reader-only labels inside the scroller, so they can't widen the page on a phone. */
+.tableWrap { position: relative; }
+
+/* Ops sections */
+.callout { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-radius: var(--radius-panel); padding: var(--space-4) var(--pad); background: var(--accent-subtle); color: var(--foreground); font-size: var(--text-sm); text-decoration: none; }
+.callout:hover { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+.callout svg { flex: 0 0 auto; color: var(--accent-strong); }
+.actions { gap: var(--space-4); }
+.actionsHead { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2) var(--space-4); }
+.actionGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr)); align-items: start; gap: var(--space-4); }
+.actionGrid > * { box-shadow: none; }
+
+/* Dashboards: short lists that link through to the full section. */
+.panelLink { display: inline-flex; min-height: 2.75rem; align-items: center; font-size: var(--text-sm); font-weight: 600; white-space: nowrap; }
+.summaryList { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.summaryRow { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto; align-items: center; gap: var(--space-2) var(--space-4); border-top: 1px solid var(--border-subtle); padding: var(--space-3) 0; font-size: var(--text-sm); }
+.summaryRow:first-child { border-top: 0; padding-top: 0; }
+.summaryRow:last-child { padding-bottom: 0; }
+.summaryMain { display: flex; min-width: 0; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); }
+.statSmall { font-size: var(--text-lg); letter-spacing: 0; }
+@media (max-width: 40rem) {
+  .summaryRow { grid-template-columns: minmax(0, 1fr) auto; }
+  .summaryRow > :nth-child(2) { grid-column: 1; grid-row: 2; }
+  .summaryRow > :last-child { grid-column: 2; grid-row: 1 / span 2; }
+}
+
+/* Narrow screens: a breaker card never grows wider than its column, and its mode switch drops under the name. */
+.breakers { grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); }
+@media (max-width: 30rem) {
+  .breaker { grid-template-columns: minmax(0, 1fr); }
+  /* One risk card per row, so each sparkline has room for its label and its change. */
+  .metrics { grid-template-columns: minmax(0, 1fr); }
+}
+/* A breaker's name and state sit above its mode switch at every width, so the two never collide. */
+.breaker { grid-template-columns: minmax(0, 1fr); justify-items: start; }

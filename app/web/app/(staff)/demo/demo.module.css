@@ -88,3 +88,12 @@
 .steps { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 @media (max-width: 78rem) { .top { grid-template-columns: 1fr; } .steps { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 40rem) { .top { grid-template-columns: 1fr; } .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Landing theme: mono uppercase metadata, bold figures. */
+.chip, .stage, .scoreLabel { font-family: var(--font-mono); font-size: .6875rem; letter-spacing: .05em; text-transform: uppercase; }
+.stepNumber { font-family: var(--font-mono); }
+.nowRoute, .nodeCount, .audienceCount, .scoreValue { font-weight: 700; }
+.score { box-shadow: none; }
+
+/* Steps size to the panel, not the window: the staff sidebar takes width the old breakpoints did not count. */
+.steps { grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), 1fr)); }

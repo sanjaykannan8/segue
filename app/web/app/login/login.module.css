@@ -1,9 +1,67 @@
-.page { display: grid; min-height: 100dvh; place-items: center; padding: var(--space-6) var(--space-4); background: var(--background); }
-.card { width: min(100%, 26rem); border: 1px solid var(--border); border-radius: var(--radius-surface); padding: var(--space-8); background: var(--surface); box-shadow: var(--shadow-raised); }
-.head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-6); }
-.title { font-size: var(--text-2xl); }
+/* Staff sign in: the page split in two. Brand panel on the left, the form on the right. */
+.page { min-height: 100dvh; background: var(--surface); }
+
+/* The split fills the whole page: brand panel inset on the left, form on the right. */
+.card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-height: 100dvh;
+  padding: var(--space-3);
+}
+
+/* Brand panel: soft blurred blues in the Segue palette. */
+.art {
+  position: sticky;
+  top: var(--space-3);
+  height: calc(100dvh - 2 * var(--space-3));
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-radius: 1.25rem;
+  padding: var(--space-8);
+  background: linear-gradient(160deg, #d6f2ff 0%, #7cc8ff 34%, #2f9bff 68%, #5b8cff 100%);
+}
+.blobA, .blobB, .blobC { position: absolute; z-index: -1; border-radius: 50%; filter: blur(60px); }
+.blobA { inset: 18% 30% 10% -25%; background: radial-gradient(circle at 40% 55%, #0a3fc2 0%, #0f5cf0 35%, #2b8cff 60%, transparent 75%); }
+.blobB { inset: -15% -20% 55% 45%; background: radial-gradient(circle, #6f8cff 0%, transparent 70%); opacity: .85; }
+.blobC { inset: 55% -10% -20% 35%; background: radial-gradient(circle, var(--morning-mist) 0%, transparent 70%); opacity: .8; }
+/* A dark wash at the foot keeps the white copy readable. */
+.art::after { content: ""; position: absolute; inset: 45% 0 0; z-index: -1; background: linear-gradient(to top, rgb(8 45 140 / .5), transparent); }
+/* Film grain over the whole panel. */
+.art::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: .55;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1.4 -.2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+}
+.artMascot, .artCopy { position: relative; z-index: 1; }
+
+.artMascot { filter: drop-shadow(0 10px 18px rgb(6 40 61 / .25)); }
+.artCopy { max-width: 30rem; color: #ffffff; }
+.artEyebrow { font-family: var(--font-mono); font-size: var(--text-xs); letter-spacing: .08em; text-transform: uppercase; opacity: .9; }
+.artHeadline { margin-top: var(--space-3); font-family: var(--font-display); font-size: clamp(1.5rem, 2.4vw, 2rem); font-weight: 700; line-height: 1.2; letter-spacing: var(--tracking-display); text-wrap: balance; }
+
+/* Form panel. */
+.panel { display: grid; place-items: center; padding: var(--space-8) var(--space-6); }
+.inner { width: min(100%, 22rem); }
+.mark { display: block; }
+.title { margin-top: var(--space-3); font-size: var(--text-3xl); font-weight: 700; }
 .intro { margin-top: var(--space-2); color: var(--text-secondary); font-size: var(--text-sm); }
 .form { display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-6); }
-@media (max-width: 26rem) { .card { padding: var(--space-6); } }
-.foot { margin-top: var(--space-6); border-top: 1px solid var(--border-subtle); padding-top: var(--space-4); color: var(--text-secondary); font-size: var(--text-sm); text-align: center; }
-.foot a { font-weight: 500; }
+.submit.submit { margin-top: var(--space-2); border-color: var(--ocean-blue); color: #ffffff; background: var(--ocean-blue); box-shadow: 0 10px 24px -8px rgb(19 99 223 / .6); }
+.foot { margin-top: var(--space-6); color: var(--text-secondary); font-size: var(--text-sm); text-align: center; }
+.foot a { font-weight: 600; }
+
+/* Narrow screens: drop the brand panel, keep the form. */
+@media (max-width: 52rem) {
+  .card { grid-template-columns: minmax(0, 1fr); }
+  .art { display: none; }
+  .panel { padding: var(--space-6) var(--space-4); }
+}

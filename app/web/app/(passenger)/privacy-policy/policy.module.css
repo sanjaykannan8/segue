@@ -38,3 +38,7 @@
 @media (max-width: 30rem) {
   .title { font-size: var(--text-2xl); }
 }
+
+/* Every contents link is a 44px touch target, like the rest of the passenger screens. */
+.toc a { min-height: 2.75rem; align-items: center; }
+.toc ol { row-gap: 0; }

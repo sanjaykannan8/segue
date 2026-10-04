@@ -134,3 +134,32 @@
 .flightNo { font-family: var(--font-body); letter-spacing: 0; }
 .policyLink, .quietLink a, .noticeRef a { display: inline-flex; min-height: 2.75rem; align-items: center; }
 .hero > :last-child { margin-top: var(--space-2); }
+
+/* Minimal theme: rounded blocks, bold headings, mono uppercase metadata. */
+.heroTitle { font-weight: 700; letter-spacing: -.03em; }
+.statusHero { border: 1px solid color-mix(in srgb, var(--risk) 28%, var(--border)); background: linear-gradient(180deg, color-mix(in srgb, var(--risk) 8%, var(--surface)), var(--surface) 60%); box-shadow: none; }
+.statusHero .headline { font-size: var(--text-2xl); font-weight: 700; line-height: 1.15; }
+.statusHero .gaugeRow { border-top-color: var(--border); }
+.flightKind, .requestMeta, .live, .updated, .feedTime { font-family: var(--font-mono); font-size: .6875rem; letter-spacing: .05em; text-transform: uppercase; }
+:is([lang="ar"], [lang="hi"], [lang="ta"]) :is(.flightKind, .requestMeta, .live, .updated, .feedTime) { font-family: var(--font-body); font-size: var(--text-xs); letter-spacing: 0; text-transform: none; }
+.flightNo { font-size: var(--text-lg); font-weight: 700; }
+.feedHead h2 { font-weight: 700; }
+.pointIcon { border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border)); }
+.danger { border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); }
+.linkCode { font-family: var(--font-mono); }
+.seeAll { display: inline-flex; min-height: 2.75rem; align-items: center; gap: var(--space-1); font-size: var(--text-sm); font-weight: 600; text-decoration: none; }
+.seeAll:hover { text-decoration: underline; }
+
+/* Consent: details first, then the choices, recommended ones marked; optional details fold away. */
+.choiceMain { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: var(--space-3); }
+.choice[data-recommended] { margin-inline: calc(var(--space-3) * -1); border-radius: var(--radius-control); padding-inline: var(--space-3); background: var(--accent-subtle); }
+.choice[data-recommended]:first-child { padding-top: var(--space-4); }
+.choice[data-recommended]:last-child { padding-bottom: var(--space-4); }
+.nudge { color: var(--text-secondary); font-size: var(--text-sm); padding-inline-start: 2rem; }
+.inlineField { padding-inline-start: 2rem; }
+.more { border: 1px solid var(--border); border-radius: var(--radius-panel); background: var(--surface); }
+.more > summary { display: flex; min-height: 3rem; align-items: center; padding: 0 var(--pad); color: var(--accent-strong); font-size: var(--text-sm); font-weight: 600; cursor: pointer; list-style-position: inside; }
+.more[open] > summary { border-bottom: 1px solid var(--border-subtle); }
+.more > .fields { padding: var(--pad); }
+.confirm { display: flex; flex-direction: column; gap: var(--space-4); }
+.confirm .noticeRef { margin: 0; }

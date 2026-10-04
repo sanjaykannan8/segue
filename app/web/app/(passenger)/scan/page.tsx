@@ -11,7 +11,7 @@ import { Select } from "@/components/arc/select/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/arc/tabs/tabs";
 import { BookingChoice } from "@/components/segue/booking-choice";
 import { choiceSummary, choiceToInput, FlightPicker, type FlightChoice } from "@/components/segue/flight-picker";
-import { HeaderLink, PassengerShell } from "@/components/segue/passenger-shell";
+import { PassengerShell } from "@/components/segue/passenger-shell";
 import { PassScanner } from "@/components/segue/pass-scanner";
 import { ErrorState, FormError, LoadingPanel, Panel } from "@/components/segue/ui";
 import { api, isStatus, useResource, type AssistanceType, type Booking } from "@/lib/api";
@@ -87,7 +87,7 @@ export default function ScanPage() {
   }
 
   return (
-    <PassengerShell pageTitle={title} title={title} intro={t("scan.intro")} action={<HeaderLink href="/privacy">{t("shell.yourData")}</HeaderLink>}>
+    <PassengerShell pageTitle={title} title={title} intro={t("scan.intro")}>
       {me.data.has_itinerary ? (
         <Alert tone="info" title={t("scan.haveTrip")}>
           <Link href="/trip">{t("scan.goTrip")}</Link>

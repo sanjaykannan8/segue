@@ -8,7 +8,7 @@ import { Alert } from "@/components/arc/alert/alert";
 import { Input } from "@/components/arc/input/input";
 import { PasswordField } from "@/components/arc/password-field/password-field";
 import { homeFor } from "@/components/segue/staff-shell";
-import { LogoTile, Mascot } from "@/components/segue/ui";
+import { Mascot } from "@/components/segue/ui";
 import { api, errorMessage, isStatus } from "@/lib/api";
 import { PageTitle } from "@/lib/i18n";
 import styles from "./login.module.css";
@@ -45,19 +45,33 @@ export default function LoginPage() {
     <main className={styles.page}>
       <PageTitle title="Staff sign in" />
       <div className={styles.card}>
-        <div className={styles.head}>
-          <LogoTile size={48} />
-          <Mascot pose="wink" size={64} />
-        </div>
-        <h1 className={styles.title}>Staff sign in</h1>
-        <p className={styles.intro}>For ops, crew, ground and airport teams. Use the account your admin gave you.</p>
-        <form className={styles.form} onSubmit={submit} noValidate>
-          <Input label="Email" type="email" name="email" inputMode="email" autoComplete="username" autoFocus value={email} onChange={(event) => setEmail(event.target.value)} />
-          <PasswordField label="Password" name="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />
-          {error ? <Alert tone="info" title="We couldn't sign you in">{errorMessage(error)}</Alert> : null}
-          <Button type="submit" size="lg" loading={busy}>Sign in</Button>
-        </form>
-        <p className={styles.foot}>Travelling? <Link href="/">Check your connection</Link> · <Link href="/privacy-policy">Privacy policy</Link></p>
+        {/* Left: the brand panel. Decorative only, so it hides on narrow screens. */}
+        <aside className={styles.art} aria-hidden="true">
+          <span className={styles.blobA} />
+          <span className={styles.blobB} />
+          <span className={styles.blobC} />
+          <Mascot pose="happy" size={84} className={styles.artMascot} />
+          <div className={styles.artCopy}>
+            <p className={styles.artEyebrow}>Ops · Crew · Ground · Airport</p>
+            <p className={styles.artHeadline}>Every tight connection at DXB, seen before it&apos;s missed.</p>
+          </div>
+        </aside>
+
+        {/* Right: the sign-in form. */}
+        <section className={styles.panel}>
+          <div className={styles.inner}>
+            <Mascot pose="wink" size={48} className={styles.mark} />
+            <h1 className={styles.title}>Staff sign in</h1>
+            <p className={styles.intro}>For ops, crew, ground and airport teams. Use the account your admin gave you.</p>
+            <form className={styles.form} onSubmit={submit} noValidate>
+              <Input label="Email" type="email" name="email" inputMode="email" autoComplete="username" autoFocus value={email} onChange={(event) => setEmail(event.target.value)} />
+              <PasswordField label="Password" name="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />
+              {error ? <Alert tone="info" title="We couldn't sign you in">{errorMessage(error)}</Alert> : null}
+              <Button type="submit" size="lg" loading={busy} className={styles.submit}>Sign in</Button>
+            </form>
+            <p className={styles.foot}>Travelling? <Link href="/">Check your connection</Link> · <Link href="/privacy-policy">Privacy policy</Link></p>
+          </div>
+        </section>
       </div>
     </main>
   );

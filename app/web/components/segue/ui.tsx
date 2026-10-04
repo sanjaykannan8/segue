@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { CircleCheck, CircleHelp, CircleX, Clock, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/arc/badge/badge";
 import { Button } from "@/components/arc/button/button";
@@ -118,4 +119,28 @@ export function Ltr({ children, className }: { children: ReactNode; className?: 
 /** Announced politely to screen readers, never shown and never focused. */
 export function LiveRegion({ children }: { children: ReactNode }) {
   return <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">{children}</p>;
+}
+
+/** A row of dashboard numbers. Each tile is a list item, so the count is announced ("list, 4 items"). */
+export function StatGrid({ label, children }: { label: string; children: ReactNode }) {
+  return <ul className={styles.statGrid} aria-label={label}>{children}</ul>;
+}
+
+/** One dashboard number: a label, the value and a short line of context. A risk level tints it; an href makes it a link. */
+export function Stat({ label, value, hint, icon, risk, href }: { label: string; value: ReactNode; hint?: ReactNode; icon?: ReactNode; risk?: RiskLevel; href?: string }) {
+  const body = (
+    <>
+      <span className={styles.statTop}>
+        <span className={`${styles.statLabel} way`}>{label}</span>
+        {icon ? <span className={styles.statIcon}>{icon}</span> : null}
+      </span>
+      <span className={styles.statValue}>{value}</span>
+      {hint ? <span className={styles.statHint}>{hint}</span> : null}
+    </>
+  );
+  return (
+    <li className={styles.stat} data-risk={risk}>
+      {href ? <Link href={href} scroll={false} className={`${styles.statBody} ${styles.statLink}`}>{body}</Link> : <div className={styles.statBody}>{body}</div>}
+    </li>
+  );
 }

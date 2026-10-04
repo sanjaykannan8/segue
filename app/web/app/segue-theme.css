@@ -1,32 +1,38 @@
 /* Segue theme: loaded after Arc's foundation.css and re-tints its tokens.
    One light theme for every screen, passenger and staff. There is no dark theme.
    Palette: Deep Ocean #06283D, Ocean Blue #1363DF, Clear Sky #47B5FF, Morning Mist #DFF6FF.
-   Status colors are used for connection risk only, always with an icon and a label. */
+   Status colors are used for connection risk only, always with an icon and a label.
+
+   Shape: minimal and rounded. Soft corners, one hairline around each block, mono uppercase labels for
+   small metadata. Blocks rest flat; only floating layers (dialogs, menus, toasts, bars) cast a shadow. */
 
 :root {
   --deep-ocean: #06283d;
   --ocean-blue: #1363df;
   --clear-sky: #47b5ff;
   --morning-mist: #dff6ff;
+  --paper: #f1f5f8;
 
-  /* Instrument Sans has no Arabic, Devanagari or Tamil glyphs: those scripts fall through to system fonts. Nothing is loaded from a CDN. */
-  --font-display: var(--font-instrument), "Instrument Sans", "Noto Sans Arabic", "Noto Sans Devanagari", "Noto Sans Tamil", "Segoe UI", system-ui, sans-serif;
-  --font-body: var(--font-instrument), "Instrument Sans", "Noto Sans Arabic", "Noto Sans Devanagari", "Noto Sans Tamil", "Segoe UI", system-ui, sans-serif;
+  /* Plus Jakarta Sans has no Arabic, Devanagari or Tamil glyphs: those scripts fall through to system fonts. Fonts are self-hosted, nothing comes from a CDN. */
+  --font-display: var(--font-jakarta), "Plus Jakarta Sans", "Noto Sans Arabic", "Noto Sans Devanagari", "Noto Sans Tamil", "Segoe UI", system-ui, sans-serif;
+  --font-body: var(--font-jakarta), "Plus Jakarta Sans", "Noto Sans Arabic", "Noto Sans Devanagari", "Noto Sans Tamil", "Segoe UI", system-ui, sans-serif;
+  --font-mono: var(--font-mono-jb), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --tracking-display: -.02em;
 
-  --background: var(--morning-mist);
+  --background: var(--paper);
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-muted: #f1f9fd;
+  --surface-muted: #f6f9fb;
   --foreground: var(--deep-ocean);
   --text-secondary: #3d5a6c;
-  --text-muted: #4a6375; /* 5.6:1 on Morning Mist, 6.4:1 on white */
-  --border: #d3e6f0;
-  --border-subtle: #e6f1f7;
+  --text-muted: #4a6375; /* 5.9:1 on paper, 6.4:1 on white */
+  --border: #d3dde4;
+  --border-subtle: #e4ebf0;
   --border-strong: #6b8ca0; /* 3.5:1 on white: the edge of inputs, checkboxes and selects */
 
   --accent: var(--ocean-blue);
   --accent-strong: #0b4bb0;
-  --accent-subtle: rgb(19 99 223 / .1);
+  --accent-subtle: rgb(19 99 223 / .08);
   --accent-foreground: #ffffff;
   --focus-ring: var(--ocean-blue);
 
@@ -42,9 +48,14 @@
   --warning: #9c6300;
   --danger: #b92c27;
 
-  --shadow-resting: 0 1px 2px rgb(6 40 61 / .05);
-  --shadow-raised: 0 6px 18px rgb(6 40 61 / .08), 0 1px 3px rgb(6 40 61 / .04);
-  --shadow-floating: 0 20px 48px rgb(6 40 61 / .14), 0 3px 10px rgb(6 40 61 / .06);
+  --radius-control: .75rem;
+  --radius-panel: 1rem;
+  --radius-surface: 1.25rem;
+  --radius-pill: 999px;
+
+  --shadow-resting: 0 1px 2px rgb(6 40 61 / .04);
+  --shadow-raised: 0 8px 24px rgb(6 40 61 / .07), 0 1px 3px rgb(6 40 61 / .04);
+  --shadow-floating: 0 18px 44px rgb(6 40 61 / .14), 0 2px 8px rgb(6 40 61 / .06);
 
   --arc-gradient-from: #9fb5d7;
   --arc-gradient-to: #46b5fd;
@@ -52,15 +63,23 @@
 
   --content-passenger: 30rem;
   --content-reading: 45rem;
-  --content-staff: 82rem;
+  --content-staff: 90rem;
+
+  /* One inset for every block, so text lines up down the page. */
+  --pad: var(--space-5);
 
   /* Chart colors that are not risk: brand blues only. */
   --chart-1: var(--ocean-blue);
   --chart-2: var(--clear-sky);
   --chart-3: var(--deep-ocean);
-  --chart-4: #9dbccd;
-  --chart-5: #d3e6f0;
+  --chart-4: #9bb0be;
+  --chart-5: #d3dde4;
 }
+@media (min-width: 40rem) { :root { --pad: var(--space-6); } }
+
+/* Small metadata reads like airport signage: mono, uppercase, tracked. */
+.way { font-family: var(--font-mono); font-size: .6875rem; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; }
+:is([lang="ar"], [lang="hi"], [lang="ta"]) .way { font-family: var(--font-body); letter-spacing: 0; text-transform: none; }
 
 /* Connection risk. --risk is the status color, --risk-ink is the text-safe value. */
 [data-risk="safe"] { --risk: #0db879; --risk-ink: #087c54; }

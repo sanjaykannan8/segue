@@ -13,7 +13,7 @@ import { Select } from "@/components/arc/select/select";
 import { Skeleton } from "@/components/arc/skeleton/skeleton";
 import { Switch } from "@/components/arc/switch/switch";
 import { DeviceLinkButton } from "@/components/segue/device-link";
-import { HeaderLink, PassengerShell } from "@/components/segue/passenger-shell";
+import { PassengerShell } from "@/components/segue/passenger-shell";
 import { useToast } from "@/components/segue/toasts";
 import { ErrorState, Fact, FormError, LoadingPanel, Ltr, Mascot, Panel, PanelHeader } from "@/components/segue/ui";
 import { api, isStatus, useResource, type Language, type Me, type Purpose } from "@/lib/api";
@@ -187,7 +187,6 @@ export default function PrivacyPage() {
 
   const data = me.data;
   const title = t("title.privacy");
-  const back = <HeaderLink href={data && !data.has_itinerary ? "/scan" : "/trip"}>{t(data && !data.has_itinerary ? "shell.addTrip" : "shell.yourTrip")}</HeaderLink>;
 
   if (me.loading || noSession) {
     return <PassengerShell pageTitle={title} title={title}><LoadingPanel label={t("privacy.loading")} lines={5} /></PassengerShell>;
@@ -199,7 +198,7 @@ export default function PrivacyPage() {
   const language = LANGUAGE_OPTIONS.find((option) => option.value === data.language)?.label ?? data.language;
 
   return (
-    <PassengerShell pageTitle={title} title={title} intro={<>{t("privacy.intro")} <Link href="/privacy-policy">{t("privacy.readPolicy")}</Link></>} action={back}>
+    <PassengerShell pageTitle={title} title={title} intro={<>{t("privacy.intro")} <Link href="/privacy-policy">{t("privacy.readPolicy")}</Link></>}>
       <EmailVerify me={data} onChange={() => void me.reload()} />
       <Panel>
         <PanelHeader title={t("privacy.hold")} />

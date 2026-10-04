@@ -72,3 +72,9 @@
   .story li { animation: none; }
   .pax { transition: none; }
 }
+
+/* Minimal theme: mono uppercase metadata, flat blocks. */
+.chip, .paxLabel, .opsEyebrow, .stripSource { font-family: var(--font-mono); font-size: .6875rem; letter-spacing: .05em; text-transform: uppercase; }
+.sectionTitle, .stripRoute, .opsTitle, .under > summary { font-weight: 700; }
+.stripCard, .pax, .phone { box-shadow: none; }
+.pax[data-changed] { box-shadow: inset 0 0 0 2px var(--accent); }

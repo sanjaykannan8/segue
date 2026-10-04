@@ -1,99 +1,48 @@
 "use client";
 
-import { Accessibility, ArrowRight } from "lucide-react";
+import Link from "next/link";
+import { Accessibility, ArrowRight, PlaneLanding, TriangleAlert, Users } from "lucide-react";
 import { Badge } from "@/components/arc/badge/badge";
 import { EmptyState } from "@/components/arc/empty-state/empty-state";
-import { Skeleton } from "@/components/arc/skeleton/skeleton";
-import { LiveState, StaffHeading } from "@/components/segue/staff-shell";
-import { ErrorState, Fact, LiveRegion, Mascot, Panel, RiskBadge, StaleNote } from "@/components/segue/ui";
-import { useLive } from "@/components/segue/use-live";
-import { api, type CrewFlight } from "@/lib/api";
-import { flightLabel, flightStatusLabel, formatAge, formatBuffer, formatTime, humanize } from "@/lib/format";
+import { Mascot, Panel, PanelHeader, Stat, StatGrid } from "@/components/segue/ui";
+import { flightLabel, formatTime } from "@/lib/format";
 import styles from "../staff.module.css";
+import { useCrew } from "./crew-list";
 
-function FlightList({ entry, showNameHelp }: { entry: CrewFlight; showNameHelp: boolean }) {
-  const { flight, items } = entry;
-  const ordered = [...items].sort((a, b) => a.rank - b.rank);
-  return (
-    <Panel label={`Call-off list for ${flightLabel(flight.flight_iata)}`}>
-      <div className={styles.flightHead}>
-        <div className={styles.flightTitle}>
-          <h2>{flightLabel(flight.flight_iata)}</h2>
-          <span className={styles.route}>{flight.origin} <ArrowRight width={16} height={16} aria-label="to" /> {flight.dest}</span>
-        </div>
-        <dl className={styles.facts}>
-          <Fact label="Arrives (est.)">{formatTime(flight.est_arr ?? flight.sched_arr)}</Fact>
-          <Fact label="Gate">{flight.arr_gate ?? "Not yet"}</Fact>
-          <Fact label="Status">{flightStatusLabel(flight)}</Fact>
-          <Fact label="Updated">{formatAge(flight.age_sec)}</Fact>
-        </dl>
-      </div>
-      {ordered.length ? (
-        <>
-          {showNameHelp ? <p className={styles.helper}>Names are masked. Confirm with the seat.</p> : null}
-          <div className={styles.tableWrap}>
-            <table className={`${styles.table} ${styles.tableLarge}`}>
-              <caption className="sr-only">Passengers to call off the aircraft first, in order</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Order</th>
-                  <th scope="col">Seat</th>
-                  <th scope="col">Name</th>
-                  <th scope="col">Onward flight</th>
-                  <th scope="col" className={styles.right}>Buffer</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Assistance</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ordered.map((item) => (
-                  <tr key={`${item.rank}-${item.seat ?? "none"}-${item.onward}`}>
-                    <td><span className={styles.rank}>{item.rank}</span></td>
-                    <th scope="row" className={styles.seat}>{item.seat ?? "No seat"}</th>
-                    <td>{item.name ?? <span className={styles.muted}>Not shared</span>}</td>
-                    <td className={styles.nowrap}>{flightLabel(item.onward)} to {item.onward_dest}</td>
-                    <td className={`${styles.right} ${styles.num} ${styles.nowrap}`}>{formatBuffer(item.buffer_min)}</td>
-                    <td>
-                      <span className={styles.badges}>
-                        <RiskBadge level={item.level} size="sm" />
-                        {item.booking === "separate_tickets" ? <Badge size="sm" tone="neutral">Separate tickets</Badge> : null}
-                      </span>
-                    </td>
-                    <td>
-                      {item.assistance && item.assistance !== "none"
-                        ? <Badge size="sm" tone="info" icon={<Accessibility width={12} height={12} aria-hidden="true" />}>{humanize(item.assistance)}</Badge>
-                        : <span className={styles.muted}>None</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      ) : (
-        <p className={styles.muted}>No one on this flight needs to get off first.</p>
-      )}
-    </Panel>
-  );
-}
-
-export default function CrewPage() {
-  const list = useLive<CrewFlight[]>(api.crewList, "crew");
-  const data = list.data;
-  const total = data?.reduce((sum, entry) => sum + entry.items.length, 0) ?? 0;
-  const firstWithItems = data?.findIndex((entry) => entry.items.length > 0) ?? -1;
+/** Crew dashboard: the figures, then each arriving flight and how many to call off. */
+export default function CrewDashboardPage() {
+  const { data, total } = useCrew();
+  const items = data.flatMap((entry) => entry.items);
+  const assisted = items.filter((item) => item.assistance && item.assistance !== "none").length;
+  const urgent = items.filter((item) => item.level === "at_risk" || item.level === "lost").length;
 
   return (
     <>
-      <StaffHeading title="Cabin crew" hint="Who to call off the aircraft first." aside={<LiveState state={list.stream} />} />
-      {data ? <LiveRegion>{`Call-off list updated: ${total} ${total === 1 ? "passenger" : "passengers"} on ${data.length} ${data.length === 1 ? "flight" : "flights"}.`}</LiveRegion> : null}
-      {data ? <StaleNote error={list.error} onRetry={() => void list.reload()} /> : null}
-      {list.loading ? <Panel><Skeleton label="Loading the call-off list" lines={5} /></Panel> : null}
-      {!list.loading && !data ? <ErrorState error={list.error} onRetry={() => void list.reload()} title="The call-off list didn't load" /> : null}
-      {data && data.length === 0 ? (
-        <Panel><EmptyState icon={<Mascot pose="sleepy" size={40} />} title="No one to call off yet" description="When an inbound flight has passengers short on time for their connection at Dubai International, they appear here in the order to let them off." /></Panel>
-      ) : null}
-      {data?.map((entry, index) => <FlightList key={entry.flight.id} entry={entry} showNameHelp={index === firstWithItems} />)}
+      <StatGrid label="Call-off summary">
+        <Stat label="Flights" value={data.length} hint="Inbound flights being watched" icon={<PlaneLanding width={16} height={16} aria-hidden="true" />} />
+        <Stat label="To call off" value={total} hint="Passengers to let off first" icon={<Users width={16} height={16} aria-hidden="true" />} href="/crew/list" />
+        <Stat label="May miss it" value={urgent} hint="At risk or can't make it" icon={<TriangleAlert width={16} height={16} aria-hidden="true" />} risk="at_risk" />
+        <Stat label="Need assistance" value={assisted} hint="Wheelchair or other help" icon={<Accessibility width={16} height={16} aria-hidden="true" />} />
+      </StatGrid>
+      <Panel label="Flights">
+        <PanelHeader title="Flights" hint="Arriving flights and how many passengers to call off on each." action={<Link href="/crew/list" className={styles.panelLink}>Open the call-off list</Link>} />
+        {data.length ? (
+          <ul className={styles.summaryList}>
+            {data.map((entry) => (
+              <li key={entry.flight.id} className={styles.summaryRow}>
+                <span className={styles.summaryMain}>
+                  <span className={styles.strong}>{flightLabel(entry.flight.flight_iata)}</span>
+                  <span className={styles.route}>{entry.flight.origin} <ArrowRight width={14} height={14} aria-label="to" /> {entry.flight.dest}</span>
+                </span>
+                <span className={styles.muted}>Arrives {formatTime(entry.flight.est_arr ?? entry.flight.sched_arr)} · Gate {entry.flight.arr_gate ?? "not yet"}</span>
+                <Badge size="sm" tone={entry.items.length ? "info" : "neutral"}>{entry.items.length} to call off</Badge>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <EmptyState icon={<Mascot pose="sleepy" size={40} />} title="No one to call off yet" description="When an inbound flight has passengers short on time for their connection at Dubai International, they appear here in the order to let them off." />
+        )}
+      </Panel>
     </>
   );
 }
